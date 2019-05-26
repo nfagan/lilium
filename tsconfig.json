@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "strictNullChecks": false,
+    "removeComments": true,
+    "preserveConstEnums": true,
+    "sourceMap": true,
+  },
+  "include": ["src/**/*", "playground/**/*"]
+}

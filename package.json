@@ -1,0 +1,28 @@
+{
+  "name": "lilium",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "server": "node ./dist/server.js",
+    "build": "webpack --watch",
+    "ts-client": "tsc --watch --outDir build ./src/client.ts",
+    "ts-server": "tsc --watch --outDir dist ./src/server.ts",
+    "build-all": "./node_modules/.bin/concurrently \"npm run ts-client\" \"npm run ts-server\" \"npm run build\""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/express": "^4.16.1",
+    "@types/gl-matrix": "^2.4.5",
+    "@types/node": "^12.0.2",
+    "@types/webaudioapi": "0.0.27",
+    "express": "^4.17.0",
+    "gl-matrix": "^3.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^4.1.0",
+    "webpack": "^4.31.0",
+    "webpack-cli": "^3.3.2"
+  }
+}

@@ -1,0 +1,174 @@
+import { vec3 } from 'gl-matrix';
+import { Ray, Aabb, arrayMax } from './math';
+import { rayIntersectsAabb } from './intersections';
+
+export class VoxelGrid {
+  public position: vec3;
+  private gridDimensions: vec3;
+  private cellDimensions: vec3;
+  private maxDim: number;
+  private intersectRay: Ray;
+  private intersectAabb: Aabb;
+  private intersectPoint: vec3;
+  private intersectIdx: vec3;
+  private isOccupied: Array<Array<Array<boolean>>> = [];
+
+  constructor(pos: vec3 | Array<number>, gridDimensions: vec3 | Array<number>, cellDimensions: vec3 | Array<number>) {
+    this.position = vec3.copy(vec3.create(), pos);
+    this.gridDimensions = vec3.copy(vec3.create(), gridDimensions);
+    this.cellDimensions = vec3.copy(vec3.create(), cellDimensions);
+    this.maxDim = arrayMax(gridDimensions);
+    this.intersectRay = new Ray();
+    this.intersectAabb = this.makeAabb(gridDimensions);
+    this.intersectPoint = vec3.create();
+    this.intersectIdx = vec3.create();
+  }
+
+  private makeAabb(gridDims: vec3 | Array<number>): Aabb {
+    return Aabb.fromValues(0, gridDims[0], 0, gridDims[1], 0, gridDims[2]);
+  }
+
+  subToInd(cell: vec3 | Array<number>): number {
+    const dims = this.gridDimensions;
+    return cell[0] + (cell[1] * dims[0]) + (cell[2] * dims[0] * dims[1]);
+  }
+
+  isInBoundsVoxelIndex(cell: vec3 | Array<number>): boolean {
+    const gridDims = this.gridDimensions;
+
+    const ix = cell[0];
+    const iy = cell[1];
+    const iz = cell[2];
+
+    if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+  markFilled(cell: vec3 | Array<number>): void {
+    const gridDims = this.gridDimensions;
+
+    const ix = cell[0];
+    const iy = cell[1];
+    const iz = cell[2];
+
+    if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
+      console.warn('Attempted to mark an out of bounds cell: ', ix, iy, iz);
+      return
+    }
+
+    if (this.isOccupied[ix] === undefined) {
+      this.isOccupied[ix] = [];
+    }
+    
+    if (this.isOccupied[ix][iy] === undefined) {
+      this.isOccupied[ix][iy] = [];
+    }
+
+    this.isOccupied[ix][iy][iz] = true;
+  }
+
+  isFilled(cell: vec3 | Array<number>): boolean {
+    const gridDims = this.gridDimensions;
+
+    const ix = cell[0];
+    const iy = cell[1];
+    const iz = cell[2];
+
+    if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
+      return false;
+    }
+
+    if (this.isOccupied[ix] === undefined) {
+      return false;
+    }
+
+    if (this.isOccupied[ix][iy] === undefined) {
+      return false;
+    }
+
+    return this.isOccupied[ix][iy][iz] === true;
+  }
+
+  intersectingCell(outIdx: vec3, rayOrigin: vec3, rayDir: vec3): boolean {
+    const gridDims = this.gridDimensions;
+    const cellDims = this.cellDimensions;
+
+    const ray = this.intersectRay.set(rayOrigin, rayDir);
+    const gridAabb = this.intersectAabb;
+  
+    gridAabb.minX = Math.max(0, rayOrigin[0]);
+    gridAabb.maxX = Math.min(gridDims[0], rayOrigin[0]);
+    gridAabb.minY = Math.max(0, rayOrigin[1]);
+    gridAabb.maxY = Math.min(gridDims[1], rayOrigin[1]);
+    gridAabb.minZ = Math.max(0, rayOrigin[2]);
+    gridAabb.maxZ = Math.min(gridDims[2], rayOrigin[2]);
+  
+    const intersectRes = rayIntersectsAabb(ray, gridAabb);
+    if (!intersectRes.intersects) {
+      return false;
+    }
+  
+    const p0 = ray.pointAt(this.intersectPoint, intersectRes.tMin);
+    for (let i = 0; i < 3; i++) {
+      outIdx[i] = Math.floor(p0[i]);
+    }
+  
+    if (this.isFilled(outIdx)) {
+      return true;
+    }
+  
+    const maxIters = this.maxDim * this.maxDim;
+    const idxTest = this.intersectIdx;
+  
+    const sx = Math.sign(rayDir[0]);
+    const sy = Math.sign(rayDir[1]);
+    const sz = Math.sign(rayDir[2]);
+  
+    const xBound = (sx > 0 ? outIdx[0]+1 : outIdx[0]) * cellDims[0];
+    const yBound = (sy > 0 ? outIdx[1]+1 : outIdx[1]) * cellDims[1];
+    const zBound = (sz > 0 ? outIdx[2]+1 : outIdx[2]) * cellDims[2];
+  
+    const tx = Math.abs(cellDims[0] / rayDir[0]);
+    const ty = Math.abs(cellDims[1] / rayDir[1]);
+    const tz = Math.abs(cellDims[2] / rayDir[2]);
+  
+    let cx = (xBound - p0[0]) / rayDir[0];
+    let cy = (yBound - p0[1]) / rayDir[1];
+    let cz = (zBound - p0[2]) / rayDir[2];
+  
+    let ix = 0;
+    let iy = 0;
+    let iz = 0;
+  
+    for (let iter = 0; iter < maxIters; iter++) {
+      if (cx < cy && cx < cz) {
+        ix += sx;
+        cx += tx;
+      } else if (cy < cz) {
+        iy += sy;
+        cy += ty;
+      } else {
+        iz += sz;
+        cz += tz;
+      }
+  
+      idxTest[0] = outIdx[0] + ix;
+      idxTest[1] = outIdx[1] + iy;
+      idxTest[2] = outIdx[2] + iz;
+  
+      if (this.isFilled(idxTest)) {
+        outIdx[0] = idxTest[0];
+        outIdx[1] = idxTest[1];
+        outIdx[2] = idxTest[2];
+        return true;
+      }
+      
+      iter++;
+    }
+    
+    return false;
+  }
+}
