@@ -11,9 +11,9 @@ app.get('main.js', (req: Request, res: Response) => {
 });
 
 app.get('/', (req: Request, res: Response) => {
-	res.sendFile('index.html', { root: __dirname });
+  res.sendFile('index.html', {root: __dirname});
 });
 
 http.listen(process.env.PORT || 3000, () => {
-	console.log('listening ...');
+  console.log('listening ...');
 });

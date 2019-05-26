@@ -1,5 +1,4 @@
 import * as types from './gl-types'
-import * as domHelpers from './dom-helpers'
 import * as intersect from './intersections';
 import * as math from './math';
 import * as debug from './debug';
@@ -12,8 +11,7 @@ export * from './program';
 export * from './follow-camera';
 export * from './vao';
 export { 
-  debug, 
-  domHelpers,
+  debug,
   intersect,
   Keyboard,
   math,

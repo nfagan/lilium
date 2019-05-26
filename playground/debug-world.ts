@@ -1,5 +1,5 @@
 import { debug, Keyboard, Program, FollowCamera, Vao, Vbo, 
-  BufferDescriptor, Ebo, domHelpers, VoxelGrid, MousePicker, types } from '../src/gl';
+  BufferDescriptor, Ebo, VoxelGrid, MousePicker, types } from '../src/gl';
 import { Result, StatTimer } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 
@@ -318,13 +318,14 @@ function addVoxelCell(voxelGridInfo: VoxelGridInfo, atIdx: vec3 | Array<number>)
   }
 
   grid.markFilled(atIdx);
-
   const currIdx = voxelGridInfo.filled.length;
+  
   for (let i = 0; i < 3; i++) {
     voxelGridInfo.filled.push(atIdx[i]);
     voxelGridInfo.colors.push(Math.random());
-    voxelGridInfo.sub2ind.set(grid.subToInd(atIdx), currIdx);
   }
+
+  voxelGridInfo.sub2ind.set(grid.subToInd(atIdx), currIdx);
 }
 
 function resetSelection(voxelGridInfo: VoxelGridInfo): void {
@@ -350,14 +351,12 @@ function handleVoxelSelection(voxelGridInfo: VoxelGridInfo, gl: WebGLRenderingCo
 
   const success = mouseRay(rayDir, gl, view, proj);
   if (!success) {
-    // console.warn('Failed to acquire ray.');
     return;
   }
 
   const cellIdx = vec3.create();
   const intersects = grid.intersectingCell(cellIdx, rayOrigin, rayDir);
   if (!intersects) {
-    // console.log('No intersection.');
     return;
   }
 
@@ -396,7 +395,7 @@ function initializeGameStateListeners() {
 }
 
 export function main() {
-  const glResult = domHelpers.createCanvasAndContext(document.body);
+  const glResult = debug.createCanvasAndContext(document.body);
   if (debug.checkError(glResult)) {
     return;
   }

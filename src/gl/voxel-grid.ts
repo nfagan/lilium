@@ -11,7 +11,7 @@ export class VoxelGrid {
   private intersectAabb: Aabb;
   private intersectPoint: vec3;
   private intersectIdx: vec3;
-  private isOccupied: Array<Array<Array<boolean>>> = [];
+  private isOccupied: Array<Array<Array<boolean>>>;
 
   constructor(pos: vec3 | Array<number>, gridDimensions: vec3 | Array<number>, cellDimensions: vec3 | Array<number>) {
     this.position = vec3.copy(vec3.create(), pos);
@@ -22,6 +22,7 @@ export class VoxelGrid {
     this.intersectAabb = this.makeAabb(gridDimensions);
     this.intersectPoint = vec3.create();
     this.intersectIdx = vec3.create();
+    this.isOccupied = [];
   }
 
   private makeAabb(gridDims: vec3 | Array<number>): Aabb {
@@ -168,7 +169,7 @@ export class VoxelGrid {
       
       iter++;
     }
-    
+
     return false;
   }
 }
