@@ -1,5 +1,5 @@
 import { Result } from '../../util';
-import { types, Program, Vao } from '..';
+import { types, Program } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
 export function cubePositions(): Float32Array {
@@ -105,11 +105,15 @@ export function drawOrigin(gl: WebGLRenderingContext, prog: Program, model: mat4
   drawFunction(gl);
 }
 
-export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: vec3, sz: number, 
+export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: vec3 | Array<number>, sz: Array<number> | number, 
   color: vec3 | Array<number>, drawFunction: types.DrawFunction): void {
   mat4.identity(model);
   mat4.translate(model, model, pos);
-  mat4.scale(model, model, [sz, sz, sz]);
+  if (typeof sz === 'number') {
+    mat4.scale(model, model, [sz, sz, sz]);
+  } else {
+    mat4.scale(model, model, sz);
+  }
   prog.setMat4('model', model);
   prog.setVec3('color', color)
   drawFunction(gl);
@@ -140,6 +144,7 @@ type DebugMouseState = {
   y: number, 
   lastX: number, 
   lastY: number,
+  clicked: boolean,
   down: boolean
 };
 
@@ -188,19 +193,11 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
     mouseState.lastY = null;
     mouseState.lastX = null;
   });
-  document.body.addEventListener('click', e => {
-    mouseState.down = !mouseState.down;
-    if (!mouseState.down) {
-      mouseState.x = 0;
-      mouseState.y = 0;
-    }
-  })
+  document.body.addEventListener('mousedown', e => mouseState.down = true);
+  document.body.addEventListener('mouseup', e => mouseState.down = false);
   document.body.addEventListener('mousemove', e => {
-    if (mouseState.down) {
-      mouseState.x = e.movementX;
-      mouseState.y = e.movementY;
-    }
-
+    mouseState.x = e.movementX;
+    mouseState.y = e.movementY;
     mouseState.lastX = e.clientX;
     mouseState.lastY = e.clientY;
   });

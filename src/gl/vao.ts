@@ -71,12 +71,6 @@ export class Vao {
     return this.isBoundState;
   }
 
-  bindIfUnbound(): void {
-    if (!this.isBoundState) {
-      this.bind();
-    }
-  }
-
   bind(): void {
     this.oesVaoExt.bindVertexArrayOES(this.vao);
     this.isBoundState = true;

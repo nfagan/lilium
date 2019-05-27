@@ -2,8 +2,8 @@ import { ICamera } from './camera';
 import { mat4, vec3 } from 'gl-matrix';
 
 export class FollowCamera implements ICamera {
-  public target: vec3;
-  public position: vec3;
+  public readonly target: vec3;
+  public readonly position: vec3;
 
   private right: vec3;
   private up: vec3;
@@ -11,6 +11,14 @@ export class FollowCamera implements ICamera {
 
   private tmpVec: vec3;
   private view: mat4;
+  private projection: mat4;
+
+  private aspectRatio: number = 1;
+  private nearPlane: number = 0.1;
+  private farPlane: number = 100;
+  private fieldOfView: number = 45*Math.PI/180;
+
+  private areProjectionComponentsDirty: boolean = true;
 
   public followDistance: number = 15;
   public maxPolar: number = Math.PI/2;
@@ -24,6 +32,7 @@ export class FollowCamera implements ICamera {
     this.right = vec3.fromValues(1, 0, 0);
     this.up = vec3.fromValues(0, 1, 0);
     this.view = mat4.create();
+    this.projection = mat4.create();
   }
 
   rotate(dx: number, dy: number): void {
@@ -73,6 +82,51 @@ export class FollowCamera implements ICamera {
   moveNeg(deltas: vec3 | Array<number>): void {
     vec3.sub(this.position, this.position, deltas);
     vec3.sub(this.target, this.target, deltas);
+  }
+
+  targetTo(pos: vec3 | Array<number>): void {
+    vec3.sub(this.tmpVec, pos, this.target);
+    vec3.add(this.target, this.target, this.tmpVec);
+    vec3.add(this.position, this.position, this.tmpVec);
+  }
+
+  setAspect(ratio: number): void {
+    if (this.aspectRatio !== ratio) {
+      this.areProjectionComponentsDirty = true;
+    }
+    this.aspectRatio = ratio;
+  }
+
+  setFieldOfView(fov: number): void {
+    if (this.fieldOfView !== fov) {
+      this.areProjectionComponentsDirty = true;
+    }
+    this.fieldOfView = fov;
+  }
+
+  setNear(near: number): void {
+    if (this.nearPlane !== near) {
+      this.areProjectionComponentsDirty = true;
+    }
+    this.nearPlane = near;
+  }
+
+  setFar(far: number): void {
+    if (this.farPlane !== far) {
+      this.areProjectionComponentsDirty = true;
+    }
+    this.farPlane = far;
+  }
+
+  makeProjectionMatrix(): mat4 {
+    const proj = this.projection;
+
+    if (!this.areProjectionComponentsDirty) {
+      return proj;
+    }
+
+    this.areProjectionComponentsDirty = false;
+    return mat4.perspective(proj, this.fieldOfView, this.aspectRatio, this.nearPlane, this.farPlane);
   }
 
   makeViewMatrix(): mat4 {

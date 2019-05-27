@@ -3,7 +3,7 @@ import { Ray, Aabb, arrayMax } from './math';
 import { rayIntersectsAabb } from './intersections';
 
 export class VoxelGrid {
-  public position: vec3;
+  public readonly position: vec3;
   private gridDimensions: vec3;
   private cellDimensions: vec3;
   private maxDim: number;
@@ -32,6 +32,18 @@ export class VoxelGrid {
   subToInd(cell: vec3 | Array<number>): number {
     const dims = this.gridDimensions;
     return cell[0] + (cell[1] * dims[0]) + (cell[2] * dims[0] * dims[1]);
+  }
+
+  getCellDimensions(out: vec3 | Array<number>): void {
+    for (let i = 0; i < 3; i++) {
+      out[i] = this.cellDimensions[i];
+    }
+  }
+
+  getCellIndexOfPoint(outIdx: vec3 | Array<number>, point: vec3 | Array<number>): void {
+    for (let i = 0; i < 3; i++) {
+      outIdx[i] = Math.floor(point[i]);
+    }
   }
 
   isInBoundsVoxelIndex(cell: vec3 | Array<number>): boolean {
@@ -93,19 +105,20 @@ export class VoxelGrid {
     return this.isOccupied[ix][iy][iz] === true;
   }
 
-  intersectingCell(outIdx: vec3, rayOrigin: vec3, rayDir: vec3): boolean {
+  intersectingCell(outIdx: vec3 | Array<number>, rayOrigin: vec3, rayDir: vec3): boolean {
     const gridDims = this.gridDimensions;
     const cellDims = this.cellDimensions;
+    const pos = this.position;
 
     const ray = this.intersectRay.set(rayOrigin, rayDir);
     const gridAabb = this.intersectAabb;
   
-    gridAabb.minX = Math.max(0, rayOrigin[0]);
-    gridAabb.maxX = Math.min(gridDims[0], rayOrigin[0]);
-    gridAabb.minY = Math.max(0, rayOrigin[1]);
-    gridAabb.maxY = Math.min(gridDims[1], rayOrigin[1]);
-    gridAabb.minZ = Math.max(0, rayOrigin[2]);
-    gridAabb.maxZ = Math.min(gridDims[2], rayOrigin[2]);
+    gridAabb.minX = Math.max(pos[0], rayOrigin[0]);
+    gridAabb.maxX = Math.min(gridDims[0] * cellDims[0], rayOrigin[0]);
+    gridAabb.minY = Math.max(pos[1], rayOrigin[1]);
+    gridAabb.maxY = Math.min(gridDims[1] * cellDims[1], rayOrigin[1]);
+    gridAabb.minZ = Math.max(pos[2], rayOrigin[2]);
+    gridAabb.maxZ = Math.min(gridDims[2] * cellDims[2], rayOrigin[2]);
   
     const intersectRes = rayIntersectsAabb(ray, gridAabb);
     if (!intersectRes.intersects) {
@@ -128,9 +141,9 @@ export class VoxelGrid {
     const sy = Math.sign(rayDir[1]);
     const sz = Math.sign(rayDir[2]);
   
-    const xBound = (sx > 0 ? outIdx[0]+1 : outIdx[0]) * cellDims[0];
-    const yBound = (sy > 0 ? outIdx[1]+1 : outIdx[1]) * cellDims[1];
-    const zBound = (sz > 0 ? outIdx[2]+1 : outIdx[2]) * cellDims[2];
+    const xBound = (sx > 0 ? outIdx[0]+1 : outIdx[0]) * cellDims[0] + pos[0];
+    const yBound = (sy > 0 ? outIdx[1]+1 : outIdx[1]) * cellDims[1] + pos[1];
+    const zBound = (sz > 0 ? outIdx[2]+1 : outIdx[2]) * cellDims[2] + pos[2];
   
     const tx = Math.abs(cellDims[0] / rayDir[0]);
     const ty = Math.abs(cellDims[1] / rayDir[1]);
