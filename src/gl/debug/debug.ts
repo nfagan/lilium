@@ -1,5 +1,5 @@
 import { Result } from '../../util';
-import { types, Program } from '..';
+import { types, Program, math } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
 export function cubePositions(): Float32Array {
@@ -102,6 +102,25 @@ export function drawOrigin(gl: WebGLRenderingContext, prog: Program, model: mat4
 
   prog.setMat4('model', model);
   prog.set3f('color', 1, 1, 1);
+  drawFunction(gl);
+}
+
+export function drawAabb(gl: WebGLRenderingContext, prog: Program, model: mat4, aabb: math.Aabb,
+  color: vec3 | Array<number>, drawFunction: types.DrawFunction): void {
+  const w = aabb.width();
+  const h = aabb.height();
+  const d = aabb.depth();
+
+  const x = aabb.minX + w/2;
+  const y = aabb.minY + h/2;
+  const z = aabb.minZ + d/2;
+
+  mat4.identity(model);
+  mat4.translate(model, model, [x, y, z]);
+  mat4.scale(model, model, [w/2, h/2, d/2]);
+
+  prog.setMat4('model', model);
+  prog.setVec3('color', color);
   drawFunction(gl);
 }
 

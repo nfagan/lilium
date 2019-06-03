@@ -4,13 +4,12 @@ import { rayIntersectsAabb } from './intersections';
 
 export class VoxelGrid {
   public readonly position: vec3;
-  private gridDimensions: vec3;
-  private cellDimensions: vec3;
+  public readonly gridDimensions: vec3;
+  public readonly cellDimensions: vec3;
   private maxDim: number;
   private intersectRay: Ray;
   private intersectAabb: Aabb;
   private intersectPoint: vec3;
-  private intersectIdx: vec3;
   private isOccupied: Array<Array<Array<boolean>>>;
 
   constructor(pos: vec3 | Array<number>, gridDimensions: vec3 | Array<number>, cellDimensions: vec3 | Array<number>) {
@@ -21,7 +20,6 @@ export class VoxelGrid {
     this.intersectRay = new Ray();
     this.intersectAabb = this.makeAabb(gridDimensions);
     this.intersectPoint = vec3.create();
-    this.intersectIdx = vec3.create();
     this.isOccupied = [];
   }
 
@@ -40,10 +38,24 @@ export class VoxelGrid {
     }
   }
 
-  getCellIndexOfPoint(outIdx: vec3 | Array<number>, point: vec3 | Array<number>): void {
-    for (let i = 0; i < 3; i++) {
-      outIdx[i] = Math.floor(point[i]);
+  getCellIndexOfComponent(component: number, dim: number): number {
+    if (dim < 0 || dim >= 3) {
+      throw new Error(`Index ${dim} exceeds 3 dimensions.`);
     }
+    return Math.floor((component - this.position[dim]) / this.cellDimensions[dim]);
+  }
+
+  getCellIndexOfPoint(outIdx: vec3 | Array<number>, point: vec3 | Array<number>): void {
+    const pos = this.position;
+    for (let i = 0; i < 3; i++) {
+      outIdx[i] = Math.floor((point[i] - pos[i]) / this.cellDimensions[i]);
+    }
+  }
+
+  getCellIndexOf3(outIdx: vec3 | Array<number>, x: number, y: number, z: number): void {
+    outIdx[0] = Math.floor((x - this.position[0]) / this.cellDimensions[0]);
+    outIdx[1] = Math.floor((y - this.position[1]) / this.cellDimensions[1]);
+    outIdx[2] = Math.floor((z - this.position[2]) / this.cellDimensions[2]);
   }
 
   isInBoundsVoxelIndex(cell: vec3 | Array<number>): boolean {
@@ -83,12 +95,12 @@ export class VoxelGrid {
     this.isOccupied[ix][iy][iz] = true;
   }
 
-  isFilled(cell: vec3 | Array<number>): boolean {
-    const gridDims = this.gridDimensions;
+  isFilledAdjacentY(cell: vec3 | Array<number>, shiftY: number): boolean {
+    return this.isFilled3(cell[0], cell[1] + shiftY, cell[2]);
+  }
 
-    const ix = cell[0];
-    const iy = cell[1];
-    const iz = cell[2];
+  isFilled3(ix: number, iy: number, iz: number): boolean {
+    const gridDims = this.gridDimensions;
 
     if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
       return false;
@@ -103,6 +115,14 @@ export class VoxelGrid {
     }
 
     return this.isOccupied[ix][iy][iz] === true;
+  }
+
+  isFilled(cell: vec3 | Array<number>): boolean {
+    const ix = cell[0];
+    const iy = cell[1];
+    const iz = cell[2];
+
+    return this.isFilled3(ix, iy, iz);
   }
 
   intersectingCell(outIdx: vec3 | Array<number>, rayOrigin: vec3, rayDir: vec3): boolean {
@@ -126,16 +146,13 @@ export class VoxelGrid {
     }
   
     const p0 = ray.pointAt(this.intersectPoint, intersectRes.tMin);
-    for (let i = 0; i < 3; i++) {
-      outIdx[i] = Math.floor(p0[i]);
-    }
+    this.getCellIndexOfPoint(outIdx, p0);
   
     if (this.isFilled(outIdx)) {
       return true;
     }
   
     const maxIters = this.maxDim * this.maxDim;
-    const idxTest = this.intersectIdx;
   
     const sx = Math.sign(rayDir[0]);
     const sy = Math.sign(rayDir[1]);
@@ -169,14 +186,14 @@ export class VoxelGrid {
         cz += tz;
       }
   
-      idxTest[0] = outIdx[0] + ix;
-      idxTest[1] = outIdx[1] + iy;
-      idxTest[2] = outIdx[2] + iz;
+      const ixTest = outIdx[0] + ix;
+      const iyTest = outIdx[1] + iy;
+      const izTest = outIdx[2] + iz;
   
-      if (this.isFilled(idxTest)) {
-        outIdx[0] = idxTest[0];
-        outIdx[1] = idxTest[1];
-        outIdx[2] = idxTest[2];
+      if (this.isFilled3(ixTest, iyTest, izTest)) {
+        outIdx[0] = ixTest;
+        outIdx[1] = iyTest;
+        outIdx[2] = izTest;
         return true;
       }
       

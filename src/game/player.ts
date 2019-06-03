@@ -3,26 +3,30 @@ import { VoxelGrid } from '../gl';
 
 export class Player {
   public upVelocity: number;
-  public readonly position: vec3;
+  public readonly position: Array<number>;
   private voxelGrid: VoxelGrid;
-  private tmpVec1: vec3;
-  private tmpVec2: vec3;
+  private tmpVec1: Array<number>;
+  private tmpVec2: Array<number>;
 
   constructor(voxelGrid: VoxelGrid) {
     this.upVelocity = 0;
-    this.position = vec3.create();
+    this.position = [0, 0, 0];
     this.voxelGrid = voxelGrid;
-    this.tmpVec1 = vec3.create();
-    this.tmpVec2 = vec3.create();
+    this.tmpVec1 = [0, 0, 0];
+    this.tmpVec2 = [0, 0, 0];
   }
 
   move(vel: vec3 | Array<number>): void {
-    vec3.add(this.tmpVec1, this.position, vel);
+    for (let i = 0; i < 3; i++) {
+      this.tmpVec1[i] = this.position[i] + vel[i];
+    }
     this.tryMove(this.tmpVec1);
   }
 
   moveNeg(vel: vec3 | Array<number>): void {
-    vec3.sub(this.tmpVec1, this.position, vel);
+    for (let i = 0; i < 3; i++) {
+      this.tmpVec1[i] = this.position[i] - vel[i];
+    }
     this.tryMove(this.tmpVec1);
   }
 
@@ -34,7 +38,7 @@ export class Player {
 
     grid.getCellIndexOfPoint(cellIdx, toPos);
     if (!grid.isFilled(cellIdx)) {
-      return;
+      // return;
     }
 
     toPos[1] = tmpY;

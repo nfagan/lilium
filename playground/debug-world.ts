@@ -1,5 +1,5 @@
 import { debug, Keyboard, Program, FollowCamera, Vao, Vbo, 
-  BufferDescriptor, Ebo, VoxelGrid, MousePicker, types } from '../src/gl';
+  BufferDescriptor, Ebo, VoxelGrid, collision, MousePicker, types, math } from '../src/gl';
 import { Result } from '../src/util';
 import { Player } from '../src/game';
 import { mat4, vec3 } from 'gl-matrix';
@@ -10,10 +10,11 @@ const MOUSE_STATE: {x: number, y: number, lastX: number, lastY: number, clicked:
   lastX: null,
   lastY: null,
   clicked: false,
-  down: true,
+  down: false,
 };
 
 const KEYBOARD = new Keyboard();
+let DEBUG_AABB: math.Aabb = null;
 
 type Drawable = {
   vao: Vao,
@@ -36,6 +37,9 @@ type Programs = {
 
 type VoxelGridInfo = {
   grid: VoxelGrid,
+  cellDims: Array<number>,
+  gridCollider: collision.VoxelGridCollider,
+  gridCollisionResult: collision.VoxelGridCollisionResult,
   filled: Array<number>,
   colors: Array<number>,
   sub2ind: Map<number, number>,
@@ -228,7 +232,8 @@ function render(gl: WebGLRenderingContext): void {
   const camera = new FollowCamera();
 
   camera.followDistance = 10;
-  camera.rotate(Math.PI, 0);
+  // camera.rotate(Math.PI, 0);
+  camera.rotate(Math.PI, Math.PI/2);
   camera.setAspect(gl.canvas.clientWidth / gl.canvas.clientHeight);
   camera.setNear(0.1);
   camera.setFar(1000);
@@ -247,7 +252,11 @@ function render(gl: WebGLRenderingContext): void {
   const maxNumInstances = gridDim * gridDim;
   const voxelGrid = makeVoxelGrid([gridDim, gridDim, gridDim], cellDims, nFilled);
   const player = new Player(voxelGrid.grid);
+  const playerDims = [0.25, 0.25, 0.25];
+  // const playerDims = [0.25, 0.25, 0.25];
+  // const playerDims = [1.01, 1.01, 1.01];
 
+  player.position[0] = 8;
   player.position[1] = cellDims[1];
 
   const programs: Programs = {
@@ -262,25 +271,87 @@ function render(gl: WebGLRenderingContext): void {
   const drawables = drawableRes.unwrap();
 
   function renderer() {
-    renderLoop(gl, programs, camera, player, drawables, voxelGrid);
+    renderLoop(gl, programs, camera, player, drawables, voxelGrid, playerDims);
     requestAnimationFrame(renderer);
   }
 
   renderer();
 }
 
-function updatePlayerPosition(player: Player, camera: FollowCamera): void {
+function makePlayerAabb(player: Player, playerDims: Array<number>): math.Aabb {
+  const aabb = new math.Aabb();
+  aabb.minX = player.position[0];
+  aabb.maxX = player.position[0] + playerDims[0]*2;
+  aabb.minY = player.position[1];
+  aabb.maxY = player.position[1] + playerDims[1]*2;
+  aabb.minZ = player.position[2];
+  aabb.maxZ = player.position[2] + playerDims[2]*2;
+  return aabb
+}
+
+function updatePlayerAabb(player: Player, velocity: Array<number>, voxelGridInfo: VoxelGridInfo, playerDims: Array<number>): void {
+  const playerAabb = makePlayerAabb(player, playerDims);
+  const collisionResult = voxelGridInfo.gridCollisionResult;
+
+  voxelGridInfo.gridCollider.moveAabb(collisionResult, playerAabb, playerAabb, velocity);
+
+  player.position[0] = playerAabb.minX;
+  player.position[1] = playerAabb.minY;
+  player.position[2] = playerAabb.minZ;
+
+  const y = player.position[1];
+  const isTopFace = collisionResult.isTopFace();
+  const isBotFace = collisionResult.isBottomFace();
+  const stopCrit = Math.abs(y) % voxelGridInfo.cellDims[1] < math.EPSILON;
+  const collisionVoxel = collisionResult.voxelIndex;
+
+  if (stopCrit && velocity[1] < 0 && isTopFace) {
+    //  If we're on a top face, *and* theres no filled voxel above this one.
+    if (!voxelGridInfo.grid.isFilledAdjacentY(collisionVoxel, 1)) {
+      player.upVelocity = 0;
+    } else {
+      console.log('Would have caught on voxel: ', collisionVoxel, 'with aabb: ', playerAabb);
+      player.upVelocity = 0;
+    }
+  } else if (isBotFace) {
+    player.upVelocity = -math.EPSILON;
+  }
+
+  voxelGridInfo.gridCollider.collidesWithAabb3(collisionResult, playerAabb, 0, -0.01, 0);
+
+  if (!collisionResult.collided) {
+    player.upVelocity -= 0.01;
+  }
+
+  if (player.position[1] < -20) {
+    player.position[0] = 2;
+    player.position[1] = 2;
+    player.position[2] = 2;
+  }
+}
+
+function handlePlayerJump(player: Player): void {
+  const maxVelocity = 1;
+
+  if (GAME_STATE.playerJumped) {
+    player.upVelocity = 0.3;
+    GAME_STATE.playerJumped = false;
+  }
+
+  if (player.upVelocity !== 0) {
+    player.upVelocity -= 0.01;
+  }
+
+  if (Math.abs(player.upVelocity) > maxVelocity) {
+    player.upVelocity = maxVelocity * Math.sign(player.upVelocity);
+  }
+}
+
+function updatePlayerPosition(player: Player, camera: FollowCamera, voxelGridInfo: VoxelGridInfo, playerDims: Array<number>): void {
   const front = camera.getFront(vec3.create());
   const right = camera.getRight(vec3.create());
-  const mvSpeed = 0.2;
-
-  player.position[1] += player.upVelocity;
-
-  player.upVelocity -= 0.01;
-  if (player.position[1] <= 0.5) {
-    player.position[1] = 0.5;
-    player.upVelocity = 0;
-  }
+  // const mvSpeed = 0.05;
+  const mvSpeed = 0.1;
 
   front[1] = 0;
   vec3.normalize(front, front);
@@ -288,14 +359,17 @@ function updatePlayerPosition(player: Player, camera: FollowCamera): void {
   vec3.scale(front, front, mvSpeed);
   vec3.scale(right, right, mvSpeed);
 
-  if (KEYBOARD.isDown('w')) player.moveNeg(front);
-  if (KEYBOARD.isDown('s')) player.move(front);
-  if (KEYBOARD.isDown('a')) player.moveNeg(right);
-  if (KEYBOARD.isDown('d')) player.move(right);
-  if (GAME_STATE.playerJumped) {
-    player.upVelocity = 0.15;
-    GAME_STATE.playerJumped = false;
-  }
+  handlePlayerJump(player);
+  
+  const velocity = [0, player.upVelocity, 0];
+
+  if (KEYBOARD.isDown('w')) math.sub3(velocity, velocity, front);
+  if (KEYBOARD.isDown('s')) math.add3(velocity, velocity, front);
+  if (KEYBOARD.isDown('a')) math.sub3(velocity, velocity, right);
+  if (KEYBOARD.isDown('d')) math.add3(velocity, velocity, right);
+
+  updatePlayerAabb(player, velocity, voxelGridInfo, playerDims);
+  // updatePlayerAabbPerDim(player, velocity, voxelGridInfo, playerDims);
 }
 
 function updateCamera(camera: FollowCamera, player: Player) {
@@ -345,17 +419,25 @@ function beginRender(gl: WebGLRenderingContext, camera: FollowCamera): void {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
 
-function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, target: vec3, drawables: Drawables): void {
+function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, target: vec3, 
+  drawables: Drawables, targetDims: Array<number>, player: Player): void {
   const currCullState: boolean = gl.getParameter(gl.CULL_FACE);
   const model = mat4.create();
   const cubeDrawFunc = drawables.cube.drawFunction;
 
-  const targSize = 0.25;
-  const targPos = [target[0], target[1]+targSize, target[2]];
+  const targPos = [target[0]+targetDims[1], target[1]+targetDims[1], target[2]+targetDims[2]];
+  // const targPos = target;
 
   drawables.cube.vao.bind();
   debug.drawOrigin(gl, prog, model, cubeDrawFunc);
-  debug.drawAt(gl, prog, model, targPos, targSize, [1, 0, 0], cubeDrawFunc);
+  // debug.drawAt(gl, prog, model, targPos, targetDims, [1, 0, 0], cubeDrawFunc);
+
+  if (DEBUG_AABB !== null) {
+    debug.drawAabb(gl, prog, model, DEBUG_AABB, [0, 1, 0], cubeDrawFunc);
+  }
+
+  const playerAabb = makePlayerAabb(player, targetDims);
+  debug.drawAabb(gl, prog, model, playerAabb, [0, 0, 1], cubeDrawFunc);
 
   gl.disable(gl.CULL_FACE);
   drawables.quad.vao.bind();
@@ -394,8 +476,13 @@ function drawVoxelGrid(gl: WebGLRenderingContext, prog: Program, drawable: Drawa
 }
 
 function makeVoxelGrid(gridDims: vec3 | Array<number>, cellDims: vec3 | Array<number>, initialDim: number): VoxelGridInfo {
+  const grid = new VoxelGrid([0, 0, 0], gridDims, cellDims);
+
   const gridInfo: VoxelGridInfo = {
-    grid: new VoxelGrid([0, 0, 0], gridDims, cellDims),
+    grid: grid,
+    gridCollisionResult: new collision.VoxelGridCollisionResult(),
+    cellDims: [cellDims[0], cellDims[1], cellDims[2]],
+    gridCollider: new collision.VoxelGridCollider(grid),
     filled: [],
     colors: [],
     sub2ind: new Map<number, number>(),
@@ -412,6 +499,22 @@ function makeVoxelGrid(gridDims: vec3 | Array<number>, cellDims: vec3 | Array<nu
       toAdd[2] = j;
 
       if (!gridInfo.grid.isFilled(toAdd)) {
+        addVoxelCell(gridInfo, toAdd);
+      }
+    }
+  }
+
+  const rows = 4;
+  const cols = 2;
+  const height = 6;
+
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      for (let k = 0; k < height; k++) {
+        toAdd[0] = i;
+        toAdd[1] = k + 1;
+        toAdd[2] = j;
+
         addVoxelCell(gridInfo, toAdd);
       }
     }
@@ -530,11 +633,11 @@ function handleVoxelAddition(voxelGridInfo: VoxelGridInfo): void {
 }
 
 function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: FollowCamera, 
-  player: Player, drawables: Drawables, voxelGridInfo: VoxelGridInfo): void {
+  player: Player, drawables: Drawables, voxelGridInfo: VoxelGridInfo, playerDims: Array<number>): void {
   beginRender(gl, camera);
 
   if (GAME_STATE.voxelManipulationState !== VoxelManipulationStates.creating) {
-    updatePlayerPosition(player, camera);
+    updatePlayerPosition(player, camera, voxelGridInfo, playerDims);
     updateCamera(camera, player);
   }
 
@@ -554,8 +657,7 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   }
 
   debug.setViewProjection(simpleProg, view, proj);
-
-  drawDebugComponents(gl, simpleProg, camera.target, drawables);
+  drawDebugComponents(gl, simpleProg, camera.target, drawables, playerDims, player);
   drawVoxelGrid(gl, simpleProg, drawables.cube, voxelGridInfo);
 
   GAME_STATE.voxelClicked = false;
