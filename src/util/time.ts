@@ -1,3 +1,19 @@
+export class Stopwatch {
+  private startTime: number;
+
+  constructor() {
+    this.startTime = performance.now();
+  }
+
+  elapsed(): number {
+    return performance.now() - this.startTime;
+  }
+
+  reset(): void {
+    this.startTime = performance.now();
+  }
+}
+
 export class StatTimer {
   private expectTick: boolean;
   private iter: number;

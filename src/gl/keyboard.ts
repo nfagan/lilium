@@ -1,7 +1,18 @@
+export const Keys = {
+  w: 87,
+  a: 65,
+  s: 83,
+  d: 68,
+  q: 81,
+  z: 90,
+  space: 32,
+  leftShift: 16,
+}
+
 export class Keyboard {
-  private keyState: {[s: string]: boolean};
+  private keyState: {[s: number]: boolean};
   private keyPressListeners: {
-    [s: string]: {[s: string]: () => void}
+    [s: number]: {[s: string]: () => void}
   }
 
   constructor() {
@@ -10,24 +21,24 @@ export class Keyboard {
     this.configureListeners();
   }
 
-  isDown(key: string): boolean {
+  isDown(key: number): boolean {
     return this.keyState[key] === true;
   }
 
-  markDown(key: string): void {
+  markDown(key: number): void {
     this.keyState[key] = true;
   }
 
-  markUp(key: string): void {
+  markUp(key: number): void {
     this.keyState[key] = false;
   }
 
-  addListener(forKey: string, name: string, cb: () => void) {
+  addListener(forKey: number, name: string, cb: () => void) {
     const listeners = this.getListenersMap(forKey);
     listeners[name] = cb;
   }
 
-  private triggerKeyPressListeners(forKey: string): void {
+  private triggerKeyPressListeners(forKey: number): void {
     const listeners = this.keyPressListeners[forKey];
 
     if (listeners === undefined) {
@@ -41,7 +52,7 @@ export class Keyboard {
     }
   }
 
-  private getListenersMap(forKey: string): {[s: string]: () => void} {
+  private getListenersMap(forKey: number): {[s: string]: () => void} {
     const maybeMap = this.keyPressListeners[forKey];
 
     if (maybeMap === undefined) {
@@ -56,10 +67,10 @@ export class Keyboard {
     const self = this;
     
     window.addEventListener('keydown', (e) => {
-      self.markDown(e.key);
-      self.triggerKeyPressListeners(e.key);
+      self.markDown(e.which);
+      self.triggerKeyPressListeners(e.which);
     });
 
-    window.addEventListener('keyup', e => self.markUp(e.key));
+    window.addEventListener('keyup', e => self.markUp(e.which));
   }
 }

@@ -5,8 +5,8 @@ import { vec3 } from 'gl-matrix';
 export class VoxelGridCollisionResult {
   public collided: boolean = false;
   public instant: number = 0;
+  public face: number = -1;
   public normal: Array<number>;
-  public face: number;
   public voxelIndex: Array<number>;
 
   constructor() {
@@ -26,23 +26,27 @@ export class VoxelGridCollisionResult {
   }
 
   isXFace(): boolean {
-    return this.face === 0 || this.face === 1;
+    return isXFace(this.face);
   }
 
   isYFace(): boolean {
-    return this.face === 2 || this.face === 3;
+    return isYFace(this.face);
   }
 
   isBottomFace(): boolean {
-    return this.face === 2;
+    return isBottomFace(this.face);
   }
 
   isTopFace(): boolean {
-    return this.face === 3;
+    return isTopFace(this.face);
   }
 
   isZFace(): boolean {
-    return this.face === 4 || this.face === 5;
+    return isZFace(this.face);
+  }
+
+  faceName(): string {
+    return faceName(this.face);
   }
 };
 
@@ -51,16 +55,12 @@ export class VoxelGridCollider {
   private collisionResult: VoxelGridCollisionResult;
   private intersectAabb: Aabb;
   private intersectIdx: Array<number>;
-  private slideAabb: Aabb;
-  private slideVelocity: Array<number>
 
   constructor(grid: VoxelGrid) {
     this.grid = grid;
     this.collisionResult = new VoxelGridCollisionResult();
     this.intersectIdx = [0, 0, 0];
     this.intersectAabb = new Aabb();
-    this.slideAabb = new Aabb();
-    this.slideVelocity = [0, 0, 0];
   }
 
   private calculateComponentInstant(vel: number, gridMin: number, gridMax: number, testMin: number, testMax: number): number {
@@ -176,25 +176,32 @@ export class VoxelGridCollider {
           let currentCollidedFace = -1;
 
           if (tx >= 0 && tx < currentMinT) {
-            currentMinT = tx;
-            currentNormIdx = 2;
-            // currentNormSign = Math.sign(vx);
-            currentNormSign = this.calculateNormalComponent(vx);
-            currentCollidedFace = this.calculateFaceIndex(vx, 0);
+            if (vx > 0 || !grid.isFilled3(ix+1, iy, iz)) {
+              //  Ignore right-side collisions when there is a filled block to the right.
+              currentMinT = tx;
+              currentNormIdx = 2;
+              currentNormSign = this.calculateNormalComponent(vx);
+              currentCollidedFace = this.calculateFaceIndex(vx, 0);
+            }
           }
 
           if (ty >= 0 && ty < currentMinT) {
-            currentMinT = ty;
-            currentNormIdx = 1;
-            // currentNormSign = Math.sign(vy);
-            currentNormSign = this.calculateNormalComponent(vy);
-            currentCollidedFace = this.calculateFaceIndex(vy, 2);
+            const okBot = vy > 0 || !grid.isFilled3(ix, iy+1, iz);
+            const okTop = vy < 0 || !grid.isFilled3(ix, iy-1, iz);
+
+            if (okBot && okTop) {
+              //  Ignore top-side collisions when there is a filled block above,
+              //  and bottom-side collisions when there is a filled block below.
+              currentMinT = ty;
+              currentNormIdx = 1;
+              currentNormSign = this.calculateNormalComponent(vy);
+              currentCollidedFace = this.calculateFaceIndex(vy, 2);
+            }
           }
 
           if (tz >= 0 && tz < currentMinT) {
             currentMinT = tz;
             currentNormIdx = 0;
-            // currentNormSign = Math.sign(vz);
             currentNormSign = this.calculateNormalComponent(vz);
             currentCollidedFace = this.calculateFaceIndex(vz, 4);
           }
@@ -259,29 +266,84 @@ export class VoxelGridCollider {
     const slideVx = outCollisionResult.normal[0] * slideAmt;
     const slideVz = outCollisionResult.normal[2] * slideAmt;
 
+    const ownCollisionResult = this.collisionResult;
+    ownCollisionResult.reset();
+
     if (!outCollisionResult.isYFace()) {
       const slideVy = vy * remainingT;
-      const collisionResult = this.collisionResult;
 
-      collisionResult.reset();
-      this.collidesWithAabb3(collisionResult, outAabb, 0, slideVy, 0);
+      this.collidesWithAabb3(ownCollisionResult, outAabb, 0, slideVy, 0);
 
-      const yInstant = collisionResult.instant;
+      const yInstant = ownCollisionResult.instant;
       outAabb.move3(0, slideVy * yInstant, 0);
 
-      collisionResult.reset();
-      this.collidesWithAabb3(collisionResult, outAabb, slideVx, 0, slideVz);
-      const slideT = collisionResult.instant;
+      ownCollisionResult.reset();
+      this.collidesWithAabb3(ownCollisionResult, outAabb, slideVx, 0, slideVz);
+      const slideT = ownCollisionResult.instant;
 
       outAabb.move3(slideVx * slideT, 0, slideVz * slideT);
     } else {
-      const collisionResult = this.collisionResult;
-
-      collisionResult.reset();
-      this.collidesWithAabb3(collisionResult, outAabb, slideVx, 0, slideVz);
-      const slideT = collisionResult.instant;
+      this.collidesWithAabb3(ownCollisionResult, outAabb, slideVx, 0, slideVz);
+      const slideT = ownCollisionResult.instant;
 
       outAabb.move3(slideVx * slideT, 0, slideVz * slideT);
     }
+  }
+}
+
+export function isXFace(face: number): boolean {
+  return face === 0 || face === 1;
+}
+
+export function isLeftFace(face: number): boolean {
+  return face === 0;
+}
+
+export function isRightFace(face: number): boolean {
+  return face === 1;
+}
+
+export function isYFace(face: number): boolean {
+  return face === 2 || face === 3;
+}
+
+export function isBottomFace(face: number): boolean {
+  return face === 2;
+}
+
+export function isTopFace(face: number): boolean {
+  return face === 3;
+}
+
+export function isBackFace(face: number): boolean {
+  return face === 4;
+}
+
+export function isFrontFace(face: number): boolean {
+  return face === 5;
+}
+
+export function isZFace(face: number): boolean {
+  return face === 4 || face === 5;
+}
+
+export function faceName(face: number): string {
+  switch (face) {
+    case -1:
+      return '<undefined>';
+    case 0:
+      return 'left';
+    case 1:
+      return 'right';
+    case 2:
+      return 'bottom';
+    case 3:
+      return 'top';
+    case 4:
+      return 'back';
+    case 5:
+      return 'front';
+    default:
+      return `<unrecognized: ${face}>`;
   }
 }

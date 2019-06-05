@@ -4,7 +4,7 @@ import * as collision from './collision';
 import * as math from './math';
 import * as debug from './debug';
 import { MousePicker } from './mouse-picker';
-import { Keyboard } from './keyboard';
+import { Keyboard, Keys } from './keyboard';
 
 export * from './voxel-grid'
 export * from './shader';
@@ -16,6 +16,7 @@ export {
   debug,
   intersect,
   Keyboard,
+  Keys,
   math,
   MousePicker,
   types

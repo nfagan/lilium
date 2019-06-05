@@ -90,6 +90,15 @@ export class FollowCamera implements ICamera {
     vec3.add(this.position, this.position, this.tmpVec);
   }
 
+  targetTo3(x: number, y: number, z: number): void {
+    this.tmpVec[0] = x - this.target[0];
+    this.tmpVec[1] = y - this.target[1];
+    this.tmpVec[2] = z - this.target[2];
+
+    vec3.add(this.target, this.target, this.tmpVec);
+    vec3.add(this.position, this.position, this.tmpVec);
+  }
+
   setAspect(ratio: number): void {
     if (this.aspectRatio !== ratio) {
       this.areProjectionComponentsDirty = true;

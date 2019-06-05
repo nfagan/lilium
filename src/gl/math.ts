@@ -2,18 +2,6 @@ import { vec3 } from 'gl-matrix';
 
 export const EPSILON = 0.000001;
 
-export function arrayMax(arr: Float32Array | Array<number>): number {
-  let max = -Infinity;
-
-  for (let i = 0; i < arr.length; i++) {
-    if (arr[i] > max) {
-      max = arr[i];
-    }
-  }
-
-  return max;
-}
-
 export function distance3(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number {
   const dx = x1 - x0;
   const dy = y1 - y0;
@@ -43,6 +31,18 @@ export function arrayMin(arr: Float32Array | Array<number>): number {
   }
 
   return min;
+}
+
+export function arrayMax(arr: Float32Array | Array<number>): number {
+  let max = -Infinity;
+
+  for (let i = 0; i < arr.length; i++) {
+    if (arr[i] > max) {
+      max = arr[i];
+    }
+  }
+
+  return max;
 }
 
 export class Ray {
@@ -109,6 +109,18 @@ export class Aabb {
     return this.maxZ - this.minZ;
   }
 
+  midX(): number {
+    return this.minX + this.width()/2;
+  }
+
+  midY(): number {
+    return this.minY + this.height()/2;
+  }
+
+  midZ(): number {
+    return this.minZ + this.depth()/2;
+  }
+
   move(by: vec3 | Array<number>): void {
     this.move3(by[0], by[1], by[2]);
   }
@@ -123,6 +135,24 @@ export class Aabb {
     this.minZ += byZ;
     this.maxZ += byZ;
   }
+
+  moveTo(pos: vec3 | Array<number>): void {
+    this.moveTo3(pos[0], pos[1], pos[2]);
+  }
+
+  moveTo3(x: number, y: number, z: number): void {
+    const w = this.width();
+    const h = this.height();
+    const d = this.depth();
+
+    this.minX = x;
+    this.minY = y;
+    this.minZ = z;
+
+    this.maxX = x + w;
+    this.maxY = y + h;
+    this.maxZ = z + d;
+  }  
 
   assign(aabb: Aabb): void {
     this.minX = aabb.minX;

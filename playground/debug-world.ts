@@ -1,4 +1,4 @@
-import { debug, Keyboard, Program, FollowCamera, Vao, Vbo, 
+import { debug, Keyboard, Keys, Program, FollowCamera, Vao, Vbo, 
   BufferDescriptor, Ebo, VoxelGrid, collision, MousePicker, types, math } from '../src/gl';
 import { Result } from '../src/util';
 import { Player } from '../src/game';
@@ -135,10 +135,10 @@ function createTouchMoveControls() {
   styleTouchElement(left, 0, 'red');
   styleTouchElement(right, 1, 'blue');
 
-  left.addEventListener('touchstart', _ => KEYBOARD.markDown('w'))
-  left.addEventListener('touchend', _ => KEYBOARD.markUp('w'))
-  right.addEventListener('touchstart', _ => KEYBOARD.markDown('s'))
-  right.addEventListener('touchend', _ => KEYBOARD.markUp('s'))
+  left.addEventListener('touchstart', _ => KEYBOARD.markDown(Keys.w));
+  left.addEventListener('touchend', _ => KEYBOARD.markUp(Keys.w));
+  right.addEventListener('touchstart', _ => KEYBOARD.markDown(Keys.s));
+  right.addEventListener('touchend', _ => KEYBOARD.markUp(Keys.s));
   
   document.body.appendChild(left);
   document.body.appendChild(right);
@@ -228,16 +228,21 @@ function makeDrawables(gl: WebGLRenderingContext, prog: Program,
   }
 }
 
-function render(gl: WebGLRenderingContext): void {
+function makeCamera(gl: WebGLRenderingContext): FollowCamera {
   const camera = new FollowCamera();
 
   camera.followDistance = 10;
-  // camera.rotate(Math.PI, 0);
   camera.rotate(Math.PI, Math.PI/2);
   camera.setAspect(gl.canvas.clientWidth / gl.canvas.clientHeight);
   camera.setNear(0.1);
   camera.setFar(1000);
   camera.setFieldOfView(45 * Math.PI/180);
+
+  return camera
+}
+
+function render(gl: WebGLRenderingContext): void {
+  const camera = makeCamera(gl);
 
   const instancedProgResult = createInstancedProgram(gl);
   const simpleProgResult = createSimpleProgram(gl);
@@ -251,13 +256,12 @@ function render(gl: WebGLRenderingContext): void {
   const nFilled = 50;
   const maxNumInstances = gridDim * gridDim;
   const voxelGrid = makeVoxelGrid([gridDim, gridDim, gridDim], cellDims, nFilled);
-  const player = new Player(voxelGrid.grid);
-  const playerDims = [0.25, 0.25, 0.25];
-  // const playerDims = [0.25, 0.25, 0.25];
-  // const playerDims = [1.01, 1.01, 1.01];
 
-  player.position[0] = 8;
-  player.position[1] = cellDims[1];
+  const playerDims = [0.51, 0.51, 0.51];
+  // const playerDims = [1.01, 1.01, 1.01];
+  const player = new Player(playerDims);
+
+  player.aabb.moveTo3(0, 8, cellDims[1]);
 
   const programs: Programs = {
     simple: simpleProgResult.unwrap(),
@@ -271,62 +275,57 @@ function render(gl: WebGLRenderingContext): void {
   const drawables = drawableRes.unwrap();
 
   function renderer() {
-    renderLoop(gl, programs, camera, player, drawables, voxelGrid, playerDims);
+    renderLoop(gl, programs, camera, player, drawables, voxelGrid);
     requestAnimationFrame(renderer);
   }
 
   renderer();
 }
 
-function makePlayerAabb(player: Player, playerDims: Array<number>): math.Aabb {
-  const aabb = new math.Aabb();
-  aabb.minX = player.position[0];
-  aabb.maxX = player.position[0] + playerDims[0]*2;
-  aabb.minY = player.position[1];
-  aabb.maxY = player.position[1] + playerDims[1]*2;
-  aabb.minZ = player.position[2];
-  aabb.maxZ = player.position[2] + playerDims[2]*2;
-  return aabb
+function checkIsPlayerGrounded(player: Player, grid: VoxelGrid, collisionResult: collision.VoxelGridCollisionResult, velocity: vec3 | Array<number>): boolean {
+  const y = player.aabb.minY;
+  const isTopFace = collisionResult.isTopFace();
+  const cellCrit = Math.abs(y) % grid.cellDimensions[1] < math.EPSILON;
+  const collisionVoxel = collisionResult.voxelIndex;
+
+  if (cellCrit && velocity[1] < 0 && isTopFace) {
+    if (grid.isFilledAdjacentY(collisionVoxel, 1)) {
+      console.warn('Caught on voxel: ', collisionVoxel);
+    }
+    return true;
+  }
+
+  return false;
 }
 
-function updatePlayerAabb(player: Player, velocity: Array<number>, voxelGridInfo: VoxelGridInfo, playerDims: Array<number>): void {
-  const playerAabb = makePlayerAabb(player, playerDims);
+function updatePlayerAabb(player: Player, velocity: Array<number>, voxelGridInfo: VoxelGridInfo): void {
+  const playerAabb = player.aabb;
+  const grid = voxelGridInfo.grid;
   const collisionResult = voxelGridInfo.gridCollisionResult;
 
   voxelGridInfo.gridCollider.moveAabb(collisionResult, playerAabb, playerAabb, velocity);
 
-  player.position[0] = playerAabb.minX;
-  player.position[1] = playerAabb.minY;
-  player.position[2] = playerAabb.minZ;
-
-  const y = player.position[1];
-  const isTopFace = collisionResult.isTopFace();
   const isBotFace = collisionResult.isBottomFace();
-  const stopCrit = Math.abs(y) % voxelGridInfo.cellDims[1] < math.EPSILON;
-  const collisionVoxel = collisionResult.voxelIndex;
+  const isPlayerGrounded = checkIsPlayerGrounded(player, grid, collisionResult, velocity);
 
-  if (stopCrit && velocity[1] < 0 && isTopFace) {
-    //  If we're on a top face, *and* theres no filled voxel above this one.
-    if (!voxelGridInfo.grid.isFilledAdjacentY(collisionVoxel, 1)) {
-      player.upVelocity = 0;
-    } else {
-      console.log('Would have caught on voxel: ', collisionVoxel, 'with aabb: ', playerAabb);
-      player.upVelocity = 0;
-    }
+  if (isPlayerGrounded) {
+    player.ground();
   } else if (isBotFace) {
     player.upVelocity = -math.EPSILON;
   }
 
+  //  Hack -- If, after moving a small amount, we do not collide with a voxel below, add fall velocity.
   voxelGridInfo.gridCollider.collidesWithAabb3(collisionResult, playerAabb, 0, -0.01, 0);
-
   if (!collisionResult.collided) {
     player.upVelocity -= 0.01;
+    player.isOnGround = false;
+  } else {
+    player.ground();
   }
 
-  if (player.position[1] < -20) {
-    player.position[0] = 2;
-    player.position[1] = 2;
-    player.position[2] = 2;
+  //  If we fell too far, reset.
+  if (player.aabb.minY < -20) {
+    player.aabb.moveTo3(2, 2, 2);
   }
 }
 
@@ -334,7 +333,9 @@ function handlePlayerJump(player: Player): void {
   const maxVelocity = 1;
 
   if (GAME_STATE.playerJumped) {
-    player.upVelocity = 0.3;
+    if (player.canJump()) {
+      player.jump();
+    }
     GAME_STATE.playerJumped = false;
   }
 
@@ -347,7 +348,7 @@ function handlePlayerJump(player: Player): void {
   }
 }
 
-function updatePlayerPosition(player: Player, camera: FollowCamera, voxelGridInfo: VoxelGridInfo, playerDims: Array<number>): void {
+function updatePlayerPosition(player: Player, camera: FollowCamera, voxelGridInfo: VoxelGridInfo): void {
   const front = camera.getFront(vec3.create());
   const right = camera.getRight(vec3.create());
   // const mvSpeed = 0.05;
@@ -363,26 +364,30 @@ function updatePlayerPosition(player: Player, camera: FollowCamera, voxelGridInf
   
   const velocity = [0, player.upVelocity, 0];
 
-  if (KEYBOARD.isDown('w')) math.sub3(velocity, velocity, front);
-  if (KEYBOARD.isDown('s')) math.add3(velocity, velocity, front);
-  if (KEYBOARD.isDown('a')) math.sub3(velocity, velocity, right);
-  if (KEYBOARD.isDown('d')) math.add3(velocity, velocity, right);
+  if (KEYBOARD.isDown(Keys.w)) math.sub3(velocity, velocity, front);
+  if (KEYBOARD.isDown(Keys.s)) math.add3(velocity, velocity, front);
+  if (KEYBOARD.isDown(Keys.a)) math.sub3(velocity, velocity, right);
+  if (KEYBOARD.isDown(Keys.d)) math.add3(velocity, velocity, right);
 
-  updatePlayerAabb(player, velocity, voxelGridInfo, playerDims);
-  // updatePlayerAabbPerDim(player, velocity, voxelGridInfo, playerDims);
+  updatePlayerAabb(player, velocity, voxelGridInfo);
 }
 
 function updateCamera(camera: FollowCamera, player: Player) {
-  if (MOUSE_STATE.down) {
+  if (KEYBOARD.isDown(Keys.leftShift)) {
     camera.rotate(MOUSE_STATE.x * 0.01, MOUSE_STATE.y * 0.01);
   }
 
-  MOUSE_STATE.x *= 0.5;
-  MOUSE_STATE.y *= 0.5;
+  MOUSE_STATE.x *= 0.75;
+  MOUSE_STATE.y *= 0.75;
 
-  camera.targetTo(player.position);
-  // if (KEYBOARD.isDown('q')) camera.move([0, 1, 0]);
-  // if (KEYBOARD.isDown('z')) camera.move([0, -1, 0]);
+  if (MOUSE_STATE.x < math.EPSILON) {
+    MOUSE_STATE.x = 0;
+  }
+  if (MOUSE_STATE.y < math.EPSILON) {
+    MOUSE_STATE.y = 0;
+  }
+
+  camera.targetTo3(player.aabb.midX(), player.aabb.midY(), player.aabb.midZ());
 }
 
 function mouseRay(out: vec3, gl: WebGLRenderingContext, view: mat4, projection: mat4): boolean {
@@ -419,24 +424,19 @@ function beginRender(gl: WebGLRenderingContext, camera: FollowCamera): void {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
 
-function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, target: vec3, 
-  drawables: Drawables, targetDims: Array<number>, player: Player): void {
+function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, drawables: Drawables, player: Player): void {
   const currCullState: boolean = gl.getParameter(gl.CULL_FACE);
   const model = mat4.create();
   const cubeDrawFunc = drawables.cube.drawFunction;
 
-  const targPos = [target[0]+targetDims[1], target[1]+targetDims[1], target[2]+targetDims[2]];
-  // const targPos = target;
-
   drawables.cube.vao.bind();
   debug.drawOrigin(gl, prog, model, cubeDrawFunc);
-  // debug.drawAt(gl, prog, model, targPos, targetDims, [1, 0, 0], cubeDrawFunc);
 
   if (DEBUG_AABB !== null) {
     debug.drawAabb(gl, prog, model, DEBUG_AABB, [0, 1, 0], cubeDrawFunc);
   }
 
-  const playerAabb = makePlayerAabb(player, targetDims);
+  const playerAabb = player.aabb;
   debug.drawAabb(gl, prog, model, playerAabb, [0, 0, 1], cubeDrawFunc);
 
   gl.disable(gl.CULL_FACE);
@@ -601,43 +601,43 @@ function handleVoxelAddition(voxelGridInfo: VoxelGridInfo): void {
   let iy = voxelGridInfo.lastVoxel[1];
   let iz = voxelGridInfo.lastVoxel[2];
 
-  let anyMarked: boolean = false;
+  let markedKey: number = -1;
 
-  if (KEYBOARD.isDown('w')) {
+  if (KEYBOARD.isDown(Keys.w)) {
     iz++;
-    anyMarked = true;
-  } else if (KEYBOARD.isDown('s')) {
+    markedKey = Keys.w;
+  } else if (KEYBOARD.isDown(Keys.s)) {
     iz--;
-    anyMarked = true;
-  } else if (KEYBOARD.isDown('a')) {
+    markedKey = Keys.s;
+  } else if (KEYBOARD.isDown(Keys.a)) {
     ix--;
-    anyMarked = true;
-  } else if (KEYBOARD.isDown('d')) {
+    markedKey = Keys.a;
+  } else if (KEYBOARD.isDown(Keys.d)) {
     ix++;
-    anyMarked = true;
-  } else if (KEYBOARD.isDown('q')) {
+    markedKey = Keys.d;
+  } else if (KEYBOARD.isDown(Keys.q)) {
     iy++;
-    anyMarked = true;
-  } else if (KEYBOARD.isDown('z')) {
+    markedKey = Keys.q;
+  } else if (KEYBOARD.isDown(Keys.z)) {
     iy--;
-    anyMarked = true;
+    markedKey = Keys.z;
   }
+
+  const anyMarked = markedKey !== -1;
 
   if (anyMarked) {
     addVoxelCell(voxelGridInfo, [ix, iy, iz]);
-  }
-
-  if (anyMarked) {
     GAME_STATE.voxelManipulationState = VoxelManipulationStates.selecting;
+    KEYBOARD.markUp(markedKey);
   }
 }
 
 function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: FollowCamera, 
-  player: Player, drawables: Drawables, voxelGridInfo: VoxelGridInfo, playerDims: Array<number>): void {
+  player: Player, drawables: Drawables, voxelGridInfo: VoxelGridInfo): void {
   beginRender(gl, camera);
 
   if (GAME_STATE.voxelManipulationState !== VoxelManipulationStates.creating) {
-    updatePlayerPosition(player, camera, voxelGridInfo, playerDims);
+    updatePlayerPosition(player, camera, voxelGridInfo);
     updateCamera(camera, player);
   }
 
@@ -657,7 +657,7 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   }
 
   debug.setViewProjection(simpleProg, view, proj);
-  drawDebugComponents(gl, simpleProg, camera.target, drawables, playerDims, player);
+  drawDebugComponents(gl, simpleProg, drawables, player);
   drawVoxelGrid(gl, simpleProg, drawables.cube, voxelGridInfo);
 
   GAME_STATE.voxelClicked = false;
@@ -667,7 +667,7 @@ function initializeGameStateListeners(gl: WebGLRenderingContext) {
   gl.canvas.addEventListener('click', () => {
     GAME_STATE.voxelClicked = true;
   });
-  KEYBOARD.addListener(' ', 'playerJump', () => GAME_STATE.playerJumped = true);
+  KEYBOARD.addListener(Keys.space, 'playerJump', () => GAME_STATE.playerJumped = true);
 }
 
 export function main() {
