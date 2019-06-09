@@ -380,10 +380,10 @@ function updateCamera(camera: FollowCamera, player: Player) {
   MOUSE_STATE.x *= 0.75;
   MOUSE_STATE.y *= 0.75;
 
-  if (MOUSE_STATE.x < math.EPSILON) {
+  if (Math.abs(MOUSE_STATE.x) < math.EPSILON) {
     MOUSE_STATE.x = 0;
   }
-  if (MOUSE_STATE.y < math.EPSILON) {
+  if (Math.abs(MOUSE_STATE.y) < math.EPSILON) {
     MOUSE_STATE.y = 0;
   }
 

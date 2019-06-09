@@ -2,6 +2,47 @@ import { Result } from '../../util';
 import { types, Program, math } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
+export function segmentedQuadPositions(numSegments: number): Float32Array {
+  const segmentSize = 1 / numSegments;
+  const positions: Array<number> = [];
+
+  for (let i = 0; i < numSegments; i++) {
+    const x0 = -1.0;
+    const x1 = 1.0;
+    const y0 = i * segmentSize;
+    const y1 = y0 + segmentSize;
+    const z = 0;
+
+    //  tri1.
+    positions.push(x0);
+    positions.push(y1);
+    positions.push(z);
+
+    positions.push(x0);
+    positions.push(y0);
+    positions.push(z);
+    
+    positions.push(x1);
+    positions.push(y0);
+    positions.push(z);
+
+    //  tri2.
+    positions.push(x1);
+    positions.push(y0);
+    positions.push(z);
+
+    positions.push(x1);
+    positions.push(y1);
+    positions.push(z);
+
+    positions.push(x0);
+    positions.push(y1);
+    positions.push(z);
+  }
+
+  return new Float32Array(positions);
+}
+
 export function cubePositions(): Float32Array {
   return new Float32Array([
     -1.0, -1.0,  1.0,
@@ -69,9 +110,18 @@ export function checkError<T>(res: Result<T, string>): boolean {
   return false;
 }
 
+export function unwrapResult<T>(res: Result<T, string>): T {
+  if (res.isErr()) {
+    throw new Error(res.unwrapErr());
+  } else {
+    return res.unwrap();
+  }
+}
+
 export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: mat4, drawFunction: types.DrawFunction): void {
   //  Z
   mat4.identity(model);
+  mat4.scale(model, model, [0.5, 0.5, 0.5]);
   mat4.translate(model, model, [0, 0, -1]);
   //
   prog.setMat4('model', model);
@@ -80,6 +130,7 @@ export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: 
 
   //  X
   mat4.identity(model);
+  mat4.scale(model, model, [0.5, 0.5, 0.5]);
   mat4.translate(model, model, [-1, 0, 0]);
   mat4.rotate(model, model, glMatrix.toRadian(90), [0, 1, 0]);
   //
@@ -89,6 +140,7 @@ export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: 
 
   //  Y
   mat4.identity(model);
+  mat4.scale(model, model, [0.5, 0.5, 0.5]);
   mat4.rotate(model, model, glMatrix.toRadian(90), [1, 0, 0]);
 
   prog.setMat4('model', model);
@@ -124,14 +176,14 @@ export function drawAabb(gl: WebGLRenderingContext, prog: Program, model: mat4, 
   drawFunction(gl);
 }
 
-export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: vec3 | Array<number>, sz: Array<number> | number, 
+export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: types.Real3, sz: types.Real3 | number,
   color: vec3 | Array<number>, drawFunction: types.DrawFunction): void {
   mat4.identity(model);
-  mat4.translate(model, model, pos);
+  mat4.translate(model, model, pos as vec3);
   if (typeof sz === 'number') {
     mat4.scale(model, model, [sz, sz, sz]);
   } else {
-    mat4.scale(model, model, sz);
+    mat4.scale(model, model, sz as vec3);
   }
   prog.setMat4('model', model);
   prog.setVec3('color', color)

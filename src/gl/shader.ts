@@ -1,4 +1,4 @@
-import * as types from './gl-types'
+import * as types from './types'
 
 export class Shader {
   private gl: WebGLRenderingContext;

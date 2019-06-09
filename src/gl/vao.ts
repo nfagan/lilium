@@ -1,5 +1,5 @@
 import { Program } from './program';
-import { PrimitiveTypedArray } from './gl-types';
+import { PrimitiveTypedArray } from './types';
 
 export type AttributeDescriptor = {
   name: string,

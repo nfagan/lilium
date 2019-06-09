@@ -1,5 +1,5 @@
 import { Shader } from './shader';
-import * as types from './gl-types';
+import * as types from './types';
 import { mat4, vec3 } from 'gl-matrix';
 
 type StringMap<T> = {
@@ -89,6 +89,17 @@ export class Program {
     }
 
     this.gl.uniform1f(loc, x);
+  }
+
+  set1i(name: string, x: number): void {
+    const loc = this.getUniformLocation(name);
+
+    if (loc === null) {
+      console.warn(`Unrecognized uniform "${name}".`);
+      return;
+    }
+
+    this.gl.uniform1i(loc, x);
   }
 
   setVec3(name: string, value: vec3 | Array<number>): void {
