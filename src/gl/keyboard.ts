@@ -7,7 +7,11 @@ export const Keys = {
   z: 90,
   space: 32,
   leftShift: 16,
-}
+  left: 37,
+  right: 39,
+  up: 38,
+  down: 40
+};
 
 export class Keyboard {
   private keyState: {[s: number]: boolean};

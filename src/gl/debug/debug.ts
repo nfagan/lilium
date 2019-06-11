@@ -1,5 +1,5 @@
 import { Result } from '../../util';
-import { types, Program, math } from '..';
+import { types, Program, math, Keyboard, Keys, Vao, VoxelGrid } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
 export function segmentedQuadPositions(numSegments: number): Float32Array {
@@ -118,6 +118,14 @@ export function unwrapResult<T>(res: Result<T, string>): T {
   }
 }
 
+export type Drawable = {
+  vao: Vao,
+  drawFunction: types.DrawFunction,
+  isInstanced: boolean,
+  numTriangles?: number,
+  numActiveInstances?: number
+};
+
 export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: mat4, drawFunction: types.DrawFunction): void {
   //  Z
   mat4.identity(model);
@@ -177,7 +185,7 @@ export function drawAabb(gl: WebGLRenderingContext, prog: Program, model: mat4, 
 }
 
 export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: types.Real3, sz: types.Real3 | number,
-  color: vec3 | Array<number>, drawFunction: types.DrawFunction): void {
+  color: types.Real3, drawFunction: types.DrawFunction): void {
   mat4.identity(model);
   mat4.translate(model, model, pos as vec3);
   if (typeof sz === 'number') {
@@ -186,7 +194,7 @@ export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, po
     mat4.scale(model, model, sz as vec3);
   }
   prog.setMat4('model', model);
-  prog.setVec3('color', color)
+  prog.setVec3('color', color);
   drawFunction(gl);
 }
 
@@ -210,7 +218,7 @@ export function tryCreateProgramFromSources(gl: WebGLRenderingContext, vsSource:
   }
 }
 
-type DebugMouseState = {
+export type DebugMouseState = {
   x: number, 
   y: number, 
   lastX: number, 
@@ -218,6 +226,17 @@ type DebugMouseState = {
   clicked: boolean,
   down: boolean
 };
+
+export function makeDebugMouseState(): DebugMouseState {
+  return {
+    x: null,
+    y: null,
+    lastX: null,
+    lastY: null,
+    clicked: false,
+    down: false,
+  };
+}
 
 export function createCanvasAndContext(appendTo: HTMLElement): Result<WebGLRenderingContext, string> {
   const canvas = document.createElement('canvas');
@@ -272,4 +291,31 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
     mouseState.lastX = e.clientX;
     mouseState.lastY = e.clientY;
   });
+}
+
+function styleTouchElement(el: HTMLDivElement, offset: number, color: string) {
+  const sz = 50;
+  
+  el.style.width = `${sz}px`;
+  el.style.height = `${sz}px`;
+  el.style.position = 'fixed';
+  el.style.bottom = '0';
+  el.style.left = `${offset * sz}`;
+  el.style.backgroundColor = color;
+}
+
+export function createTouchMoveControls(keyboard: Keyboard) {
+  const left = document.createElement('div');
+  const right = document.createElement('div');
+
+  styleTouchElement(left, 0, 'red');
+  styleTouchElement(right, 1, 'blue');
+
+  left.addEventListener('touchstart', _ => keyboard.markDown(Keys.w));
+  left.addEventListener('touchend', _ => keyboard.markUp(Keys.w));
+  right.addEventListener('touchstart', _ => keyboard.markDown(Keys.s));
+  right.addEventListener('touchend', _ => keyboard.markUp(Keys.s));
+  
+  document.body.appendChild(left);
+  document.body.appendChild(right);
 }

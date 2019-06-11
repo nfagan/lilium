@@ -1,6 +1,6 @@
 import { Shader } from './shader';
 import * as types from './types';
-import { mat4, vec3 } from 'gl-matrix';
+import { mat4 } from 'gl-matrix';
 
 type StringMap<T> = {
   [s: string]: T
@@ -19,14 +19,14 @@ export class Program {
   }
 
   private maybeGetCachedLocation<T>(map: StringMap<T>, kind: string, name: string, 
-    locGetter: () => T, locValidator: (v: T) => boolean): T {
+    locGetter: () => T, locValidator: (v: T) => boolean, forceQuery: boolean): T {
     if (this.program === null) {
       throw new Error(`Cannot get ${kind} from invalid or unattached program.`);
     }
 
     let potentialLoc = map[name];
     
-    if (potentialLoc !== undefined) {
+    if (!forceQuery && potentialLoc !== undefined) {
       return potentialLoc;
     } else {
       potentialLoc = locGetter();
@@ -42,20 +42,20 @@ export class Program {
     this.gl.useProgram(this.program);
   }
 
-  getAttributeLocation(name: string): number {
+  getAttributeLocation(name: string, forceQuery: boolean = false): number {
     const self = this;
     const locGetter = () => self.gl.getAttribLocation(self.program, name);
     const locValidator = (loc: number) => loc !== -1
     
-    return this.maybeGetCachedLocation(this.attributeLocations, 'attribute', name, locGetter, locValidator);
+    return this.maybeGetCachedLocation(this.attributeLocations, 'attribute', name, locGetter, locValidator, forceQuery);
   }
 
-  getUniformLocation(name: string): WebGLUniformLocation {
+  getUniformLocation(name: string, forceQuery: boolean = false): WebGLUniformLocation {
     const self = this;
     const locGetter = () => self.gl.getUniformLocation(self.program, name);
     const locValidator = (loc: WebGLUniformLocation) => loc !== null;
-    
-    return this.maybeGetCachedLocation(this.uniformLocations, 'uniform', name, locGetter, locValidator);
+
+    return this.maybeGetCachedLocation(this.uniformLocations, 'uniform', name, locGetter, locValidator, forceQuery);
   }
 
   setMat4(name: string, value: mat4): void {
@@ -102,7 +102,7 @@ export class Program {
     this.gl.uniform1i(loc, x);
   }
 
-  setVec3(name: string, value: vec3 | Array<number>): void {
+  setVec3(name: string, value: types.Real3): void {
     this.set3f(name, value[0], value[1], value[2]);
   }
 
@@ -121,7 +121,7 @@ export class Program {
     gl.linkProgram(program);
 
     for (let i = 0; i < shaders.length; i++) {
-      shaders[i].detachFrom(program);
+      // shaders[i].detachFrom(program);
       shaders[i].dispose();
     }
 

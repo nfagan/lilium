@@ -1,33 +1,23 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, Vbo, 
-  BufferDescriptor, Ebo, VoxelGrid, collision, MousePicker, types, math } from '../src/gl';
+  BufferDescriptor, Ebo, VoxelGrid, collision, MousePicker, math, types } from '../src/gl';
 import { Result } from '../src/util';
 import { Player } from '../src/game';
 import { mat4, vec3 } from 'gl-matrix';
+import * as simpleSources from './shaders/debug-simple';
+import * as voxelGridSources from './shaders/voxel-grid';
 
-const MOUSE_STATE: {x: number, y: number, lastX: number, lastY: number, clicked: boolean, down: boolean} = {
-  x: null,
-  y: null,
-  lastX: null,
-  lastY: null,
-  clicked: false,
-  down: false,
-};
-
+const MOUSE_STATE = debug.makeDebugMouseState();
 const KEYBOARD = new Keyboard();
-let DEBUG_AABB: math.Aabb = null;
 
-type Drawable = {
-  vao: Vao,
-  drawFunction: types.DrawFunction,
-  isInstanced: boolean,
-  numTriangles?: number,
-  numActiveInstances?: number
+type Drawable = debug.Drawable;
+type InstancedDrawable = Drawable & {
+  tmpEmptyArray: Float32Array
 };
 
 type Drawables = {
   quad: Drawable,
   cube: Drawable,
-  instancedCube: Drawable
+  instancedCube: InstancedDrawable
 };
 
 type Programs = {
@@ -66,88 +56,19 @@ const GAME_STATE: GameState = {
 };
 
 function createInstancedProgram(gl: WebGLRenderingContext): Result<Program, string> {
-  const vsSource = `
-    precision highp float;
-    attribute vec3 a_position;
-    attribute vec3 a_translation;
-    attribute vec3 a_color;
-    varying vec3 v_color;
-    uniform mat4 projection;
-    uniform mat4 model;
-    uniform mat4 view;
-    uniform vec3 scale;
-    void main() {
-      v_color = a_color;
-      vec4 pos = vec4(a_position * scale + a_translation, 1.0);
-      gl_Position = projection * view * model * pos;
-    }
-  `;
-
-  const fsSource = `
-  precision highp float;
-  varying vec3 v_color;
-  void main() {
-    gl_FragColor = vec4(v_color, 1.0);
-  }
-  `;
-  return debug.tryCreateProgramFromSources(gl, vsSource, fsSource);
+  return debug.tryCreateProgramFromSources(gl, voxelGridSources.vertex, voxelGridSources.fragment);
 }
 
 function createSimpleProgram(gl: WebGLRenderingContext): Result<Program, string> {
-  const vsSource = `
-    precision highp float;
-    attribute vec3 aPosition;
-    uniform mat4 projection;
-    uniform mat4 model;
-    uniform mat4 view;
-    void main() {
-      gl_Position = projection * view * model * vec4(aPosition, 1.0);
-    }
-  `;
-
-  const fsSource = `
-  precision highp float;
-  uniform vec3 color;
-  uniform float alpha;
-  void main() {
-    gl_FragColor = vec4(color, 1.0);
-  }
-  `;
-
-  return debug.tryCreateProgramFromSources(gl, vsSource, fsSource);
-}
-
-function styleTouchElement(el: HTMLDivElement, offset: number, color: string) {
-  const sz = 50;
-  
-  el.style.width = `${sz}px`;
-  el.style.height = `${sz}px`;
-  el.style.position = 'fixed';
-  el.style.bottom = '0';
-  el.style.left = `${offset * sz}`;
-  el.style.backgroundColor = color;
-}
-
-function createTouchMoveControls() {
-  const left = document.createElement('div');
-  const right = document.createElement('div');
-
-  styleTouchElement(left, 0, 'red');
-  styleTouchElement(right, 1, 'blue');
-
-  left.addEventListener('touchstart', _ => KEYBOARD.markDown(Keys.w));
-  left.addEventListener('touchend', _ => KEYBOARD.markUp(Keys.w));
-  right.addEventListener('touchstart', _ => KEYBOARD.markDown(Keys.s));
-  right.addEventListener('touchend', _ => KEYBOARD.markUp(Keys.s));
-  
-  document.body.appendChild(left);
-  document.body.appendChild(right);
+  return debug.tryCreateProgramFromSources(gl, simpleSources.vertex, simpleSources.fragment);
 }
 
 function makeDrawable(gl: WebGLRenderingContext, prog: Program, 
   positions: Float32Array, indices: Uint16Array, numTriangles: number): Drawable {
+  prog.use();
+
   const descriptor = new BufferDescriptor();
-  descriptor.addAttribute({name: 'aPosition', size: 3, type: gl.FLOAT});
+  descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT});
   descriptor.getAttributeLocations(prog);
 
   const vao = new Vao(gl);
@@ -165,16 +86,20 @@ function makeDrawable(gl: WebGLRenderingContext, prog: Program,
 }
 
 function makeInstancedDrawable(gl: WebGLRenderingContext, prog: Program, positions: Float32Array, 
-  indices: Uint16Array, numTriangles: number, maxNumInstances: number): Drawable {
+  indices: Uint16Array, numTriangles: number, maxNumInstances: number): InstancedDrawable {
+  prog.use();
   
   const descriptor = new BufferDescriptor();
   descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT, divisor: 0});
+  descriptor.getAttributeLocations(prog);
 
   const colorDescriptor = new BufferDescriptor();
   colorDescriptor.addAttribute({name: 'a_color', size: 3, type: gl.FLOAT, divisor: 1});
+  colorDescriptor.getAttributeLocations(prog);
 
   const transDescriptor = new BufferDescriptor();
   transDescriptor.addAttribute({name: 'a_translation', size: 3, type: gl.FLOAT, divisor: 1});
+  transDescriptor.getAttributeLocations(prog);
 
   const emptyFloat3Array = new Float32Array(maxNumInstances * 3); //  * (x, y, z) or (r, g, b)
 
@@ -187,12 +112,13 @@ function makeInstancedDrawable(gl: WebGLRenderingContext, prog: Program, positio
   vao.attachEbo('indices', new Ebo(gl, indices));
   vao.unbind();
 
-  const drawable: Drawable = {
+  const drawable: InstancedDrawable = {
     vao: vao,
     drawFunction: null,
     isInstanced: true,
     numTriangles: numTriangles,
-    numActiveInstances: 0
+    numActiveInstances: 0,
+    tmpEmptyArray: new Float32Array(3)
   };
 
   const drawFunc = (gl: WebGLRenderingContext) => {
@@ -212,8 +138,7 @@ function makeInstancedDrawable(gl: WebGLRenderingContext, prog: Program, positio
   return drawable;
 }
 
-function makeDrawables(gl: WebGLRenderingContext, prog: Program, 
-  instancedProg: Program, maxNumInstances: number): Result<Drawables, string> {
+function makeDrawables(gl: WebGLRenderingContext, prog: Program, instancedProg: Program, maxNumInstances: number): Result<Drawables, string> {
   const cubePos = debug.cubePositions();
   const cubeInds = debug.cubeIndices();
 
@@ -244,15 +169,15 @@ function makeCamera(gl: WebGLRenderingContext): FollowCamera {
 function render(gl: WebGLRenderingContext): void {
   const camera = makeCamera(gl);
 
-  const instancedProgResult = createInstancedProgram(gl);
   const simpleProgResult = createSimpleProgram(gl);
+  const instancedProgResult = createInstancedProgram(gl);
 
   if (debug.checkError(simpleProgResult) || debug.checkError(instancedProgResult)) {
     return;
   }
 
   const gridDim = 100;
-  const cellDims = [1, 0.5, 1];
+  const cellDims = [2, 0.5, 2];
   const nFilled = 50;
   const maxNumInstances = gridDim * gridDim;
   const voxelGrid = makeVoxelGrid([gridDim, gridDim, gridDim], cellDims, nFilled);
@@ -325,12 +250,12 @@ function updatePlayerAabb(player: Player, velocity: Array<number>, voxelGridInfo
 
   //  If we fell too far, reset.
   if (player.aabb.minY < -20) {
-    player.aabb.moveTo3(2, 2, 2);
+    player.aabb.moveTo3(2, 20, 2);
   }
 }
 
 function handlePlayerJump(player: Player): void {
-  const maxVelocity = 1;
+  const maxYVelocity = 2;
 
   if (GAME_STATE.playerJumped) {
     if (player.canJump()) {
@@ -343,8 +268,8 @@ function handlePlayerJump(player: Player): void {
     player.upVelocity -= 0.01;
   }
 
-  if (Math.abs(player.upVelocity) > maxVelocity) {
-    player.upVelocity = maxVelocity * Math.sign(player.upVelocity);
+  if (Math.abs(player.upVelocity) > maxYVelocity) {
+    player.upVelocity = maxYVelocity * Math.sign(player.upVelocity);
   }
 }
 
@@ -425,16 +350,11 @@ function beginRender(gl: WebGLRenderingContext, camera: FollowCamera): void {
 }
 
 function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, drawables: Drawables, player: Player): void {
-  const currCullState: boolean = gl.getParameter(gl.CULL_FACE);
   const model = mat4.create();
   const cubeDrawFunc = drawables.cube.drawFunction;
 
   drawables.cube.vao.bind();
   debug.drawOrigin(gl, prog, model, cubeDrawFunc);
-
-  if (DEBUG_AABB !== null) {
-    debug.drawAabb(gl, prog, model, DEBUG_AABB, [0, 1, 0], cubeDrawFunc);
-  }
 
   const playerAabb = player.aabb;
   debug.drawAabb(gl, prog, model, playerAabb, [0, 0, 1], cubeDrawFunc);
@@ -442,10 +362,37 @@ function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, drawables
   gl.disable(gl.CULL_FACE);
   drawables.quad.vao.bind();
   debug.drawAxesPlanes(gl, prog, model, drawables.quad.drawFunction);
+  gl.enable(gl.CULL_FACE);
+}
 
-  if (currCullState) {
-    gl.enable(gl.CULL_FACE);
+function drawInstancedVoxelGrid(gl: WebGLRenderingContext, programs: Programs, drawables: Drawables, voxelGridInfo: VoxelGridInfo, view: mat4, proj: mat4): void {
+  const lastLinearIdx = voxelGridInfo.lastLinearInd;
+  programs.simple.use();
+
+  if (lastLinearIdx !== null) {
+    const cellCenter = vec3.create();
+    const useCellDims = vec3.create();
+
+    for (let i = 0; i < 3; i++) {
+      cellCenter[i] = voxelGridInfo.filled[i + lastLinearIdx];
+      const szOffset = 0.05;
+      useCellDims[i] = voxelGridInfo.grid.cellDimensions[i] / 2 + szOffset;
+    }
+
+    drawables.cube.vao.bind();
+    voxelGridInfo.grid.getCellCenter(cellCenter, cellCenter);
+    debug.drawAt(gl, programs.simple, mat4.create(), cellCenter, useCellDims, [1, 1, 1], drawables.cube.drawFunction);
   }
+  
+  const instancedProg = programs.instanced;
+  const cellDims = voxelGridInfo.cellDims;
+
+  instancedProg.use();
+  debug.setViewProjection(programs.instanced, view, proj);
+  instancedProg.set3f('scale', cellDims[0]/2, cellDims[1]/2, cellDims[2]/2);
+
+  drawables.instancedCube.vao.bind();
+  drawables.instancedCube.drawFunction(gl);
 }
 
 function drawVoxelGrid(gl: WebGLRenderingContext, prog: Program, drawable: Drawable, voxelGridInfo: VoxelGridInfo): void {
@@ -523,7 +470,7 @@ function makeVoxelGrid(gridDims: vec3 | Array<number>, cellDims: vec3 | Array<nu
   return gridInfo;
 }
 
-function addVoxelCell(voxelGridInfo: VoxelGridInfo, atIdx: vec3 | Array<number>): void {
+function addVoxelCell(voxelGridInfo: VoxelGridInfo, atIdx: types.Real3, playerAabb?: math.Aabb): void {
   const grid = voxelGridInfo.grid;
   if (!grid.isInBoundsVoxelIndex(atIdx)) {
     console.log('Out of range index: ', atIdx);
@@ -536,6 +483,22 @@ function addVoxelCell(voxelGridInfo: VoxelGridInfo, atIdx: vec3 | Array<number>)
   }
 
   grid.markFilled(atIdx);
+
+  //  Hack -- test to see if collission occurs with this new
+  //  cell. If so, unmark it, and return.
+  if (playerAabb !== undefined) {
+    const collider = voxelGridInfo.gridCollider;
+    const collisionResult = voxelGridInfo.gridCollisionResult;
+
+    collider.collidesWithAabb3(collisionResult, playerAabb, 0, 0, 0);
+
+    if (collisionResult.collided) {
+      console.log('Not adding cell because it overlaps with player: ', atIdx);
+      grid.markEmpty(atIdx);
+      return;
+    }
+  }
+
   const currIdx = voxelGridInfo.filled.length;
 
   for (let i = 0; i < 3; i++) {
@@ -592,7 +555,7 @@ function handleVoxelSelection(voxelGridInfo: VoxelGridInfo, gl: WebGLRenderingCo
   }
 }
 
-function handleVoxelAddition(voxelGridInfo: VoxelGridInfo): void {
+function handleVoxelAddition(voxelGridInfo: VoxelGridInfo, playerAabb: math.Aabb): void {
   if (voxelGridInfo.lastLinearInd === null) {
     return;
   }
@@ -626,10 +589,67 @@ function handleVoxelAddition(voxelGridInfo: VoxelGridInfo): void {
   const anyMarked = markedKey !== -1;
 
   if (anyMarked) {
-    addVoxelCell(voxelGridInfo, [ix, iy, iz]);
+    addVoxelCell(voxelGridInfo, [ix, iy, iz], playerAabb);
     GAME_STATE.voxelManipulationState = VoxelManipulationStates.selecting;
     KEYBOARD.markUp(markedKey);
   }
+}
+
+function updateVoxelInstances(gl: WebGLRenderingContext, voxelGridInfo: VoxelGridInfo, instancedCube: InstancedDrawable): void {
+  const grid = voxelGridInfo.grid;
+  const numFilled = grid.countFilled();
+  const numActiveInstances = instancedCube.numActiveInstances;
+  const cellDims = grid.cellDimensions;
+  const filled = voxelGridInfo.filled;
+
+  if (numFilled === numActiveInstances) {
+    return;
+  } else if (numFilled < numActiveInstances) {
+    //  @TODO: Handle this case via a removeVoxelCell() function or similar.
+    console.warn('Fewer filled cells than active instances.');
+    return;
+  }
+
+  // console.log('Need update; have: ', numFilled, '; ', numActiveInstances, 'are active.');
+
+  const numToUpdate = numFilled - numActiveInstances;
+  const offsetFilled = numActiveInstances * 3;
+  const byteOffset = offsetFilled * Float32Array.BYTES_PER_ELEMENT;
+
+  const instanceVao = instancedCube.vao;
+  const translationVbo = instanceVao.getVbo('translation');
+  const colorVbo = instanceVao.getVbo('color');
+
+  let tmpArray: Float32Array = null;
+  if (numToUpdate === 1) {
+    //  Don't create a new array for only a single addition.
+    tmpArray = instancedCube.tmpEmptyArray;
+  } else {
+    tmpArray = new Float32Array(numToUpdate * 3);
+  }
+
+  for (let i = 0; i < numToUpdate; i++) {
+    for (let j = 0; j < 3; j++) {
+      const linearIdx = i*3 + j;
+      const minDim = filled[linearIdx + offsetFilled] * cellDims[j];
+      const midDim = minDim + cellDims[j]/2;
+      tmpArray[linearIdx] = midDim;
+    }
+  }
+
+  translationVbo.bind(gl);
+  translationVbo.subData(gl, tmpArray, byteOffset);
+
+  for (let i = 0; i < numToUpdate; i++) {
+    tmpArray[i*3] = Math.random();
+    tmpArray[i*3+1] = 0.9;
+    tmpArray[i*3+2] = Math.random();
+  }
+  
+  colorVbo.bind(gl);
+  colorVbo.subData(gl, tmpArray, byteOffset);
+
+  instancedCube.numActiveInstances = numFilled;
 }
 
 function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: FollowCamera, 
@@ -652,13 +672,17 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
       handleVoxelSelection(voxelGridInfo, gl, camera, view, proj);
       break;
     case VoxelManipulationStates.creating:
-      handleVoxelAddition(voxelGridInfo);
+      handleVoxelAddition(voxelGridInfo, player.aabb);
       break;
   }
 
+
   debug.setViewProjection(simpleProg, view, proj);
   drawDebugComponents(gl, simpleProg, drawables, player);
-  drawVoxelGrid(gl, simpleProg, drawables.cube, voxelGridInfo);
+  // drawVoxelGrid(gl, simpleProg, drawables.cube, voxelGridInfo);
+
+  updateVoxelInstances(gl, voxelGridInfo, drawables.instancedCube);
+  drawInstancedVoxelGrid(gl, programs, drawables, voxelGridInfo, view, proj);
 
   GAME_STATE.voxelClicked = false;
 }
@@ -679,7 +703,7 @@ export function main() {
 
   debug.setupDocumentBody(MOUSE_STATE);
 
-  createTouchMoveControls();
+  debug.createTouchMoveControls(KEYBOARD);
   initializeGameStateListeners(gl);
   render(gl);
 }

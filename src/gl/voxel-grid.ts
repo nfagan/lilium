@@ -1,6 +1,7 @@
 import { vec3 } from 'gl-matrix';
 import { Ray, Aabb, arrayMax } from './math';
 import { rayIntersectsAabb } from './intersections';
+import * as types from './types';
 
 export class VoxelGrid {
   public readonly position: vec3;
@@ -11,6 +12,7 @@ export class VoxelGrid {
   private intersectAabb: Aabb;
   private intersectPoint: vec3;
   private isOccupied: Array<Array<Array<boolean>>>;
+  private numFilledCells: number;
 
   constructor(pos: vec3 | Array<number>, gridDimensions: vec3 | Array<number>, cellDimensions: vec3 | Array<number>) {
     this.position = vec3.copy(vec3.create(), pos);
@@ -21,18 +23,27 @@ export class VoxelGrid {
     this.intersectAabb = this.makeAabb(gridDimensions);
     this.intersectPoint = vec3.create();
     this.isOccupied = [];
+    this.numFilledCells = 0;
   }
 
-  private makeAabb(gridDims: vec3 | Array<number>): Aabb {
+  private makeAabb(gridDims: types.Real3): Aabb {
     return Aabb.fromValues(0, gridDims[0], 0, gridDims[1], 0, gridDims[2]);
   }
 
-  subToInd(cell: vec3 | Array<number>): number {
+  subToInd(cell: types.Real3): number {
     const dims = this.gridDimensions;
     return cell[0] + (cell[1] * dims[0]) + (cell[2] * dims[0] * dims[1]);
   }
 
-  getCellDimensions(out: vec3 | Array<number>): void {
+  getCellCenter(out: types.Real3, cellIdx: types.Real3): void {
+    for (let i = 0; i < 3; i++) {
+      const minCoord = cellIdx[i] * this.cellDimensions[i] + this.position[i];
+      const halfSz = this.cellDimensions[i]/2;
+      out[i] = minCoord + halfSz;
+    }
+  }
+
+  getCellDimensions(out: types.Real3): void {
     for (let i = 0; i < 3; i++) {
       out[i] = this.cellDimensions[i];
     }
@@ -45,20 +56,20 @@ export class VoxelGrid {
     return Math.floor((component - this.position[dim]) / this.cellDimensions[dim]);
   }
 
-  getCellIndexOfPoint(outIdx: vec3 | Array<number>, point: vec3 | Array<number>): void {
+  getCellIndexOfPoint(outIdx: types.Real3, point: types.Real3): void {
     const pos = this.position;
     for (let i = 0; i < 3; i++) {
       outIdx[i] = Math.floor((point[i] - pos[i]) / this.cellDimensions[i]);
     }
   }
 
-  getCellIndexOf3(outIdx: vec3 | Array<number>, x: number, y: number, z: number): void {
+  getCellIndexOf3(outIdx: types.Real3, x: number, y: number, z: number): void {
     outIdx[0] = Math.floor((x - this.position[0]) / this.cellDimensions[0]);
     outIdx[1] = Math.floor((y - this.position[1]) / this.cellDimensions[1]);
     outIdx[2] = Math.floor((z - this.position[2]) / this.cellDimensions[2]);
   }
 
-  isInBoundsVoxelIndex(cell: vec3 | Array<number>): boolean {
+  isInBoundsVoxelIndex(cell: types.Real3): boolean {
     const gridDims = this.gridDimensions;
 
     const ix = cell[0];
@@ -72,7 +83,11 @@ export class VoxelGrid {
     }
   }
 
-  markFilled(cell: vec3 | Array<number>): void {
+  countFilled(): number {
+    return this.numFilledCells;
+  }
+
+  markFilled(cell: types.Real3): void {
     const gridDims = this.gridDimensions;
 
     const ix = cell[0];
@@ -81,7 +96,7 @@ export class VoxelGrid {
 
     if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
       console.warn('Attempted to mark an out of bounds cell: ', ix, iy, iz);
-      return
+      return;
     }
 
     if (this.isOccupied[ix] === undefined) {
@@ -92,7 +107,40 @@ export class VoxelGrid {
       this.isOccupied[ix][iy] = [];
     }
 
+    const currFillState = this.isOccupied[ix][iy][iz];
     this.isOccupied[ix][iy][iz] = true;
+
+    if (!currFillState) {
+      //  If not already filled.
+      this.numFilledCells++;
+    }
+  }
+
+  markEmpty(cell: types.Real3): void {
+    if (!this.isInBoundsVoxelIndex(cell)) {
+      console.warn('Attempted to unmark an out of bounds cell: ', cell);
+      return;
+    }
+
+    const ix = cell[0];
+    const iy = cell[1];
+    const iz = cell[2];
+
+    if (this.isOccupied[ix] === undefined) {
+      return;
+    }
+
+    if (this.isOccupied[ix][iy] === undefined) {
+      return;
+    }
+
+    const currFillState = this.isOccupied[ix][iy][iz];
+    this.isOccupied[ix][iy][iz] = false;
+
+    if (currFillState === true) {
+      //  If cell was filled.
+      this.numFilledCells--;
+    }
   }
 
   isFilledAdjacentY(cell: vec3 | Array<number>, shiftY: number): boolean {
@@ -117,7 +165,7 @@ export class VoxelGrid {
     return this.isOccupied[ix][iy][iz] === true;
   }
 
-  isFilled(cell: vec3 | Array<number>): boolean {
+  isFilled(cell: types.Real3): boolean {
     const ix = cell[0];
     const iy = cell[1];
     const iz = cell[2];
@@ -125,7 +173,7 @@ export class VoxelGrid {
     return this.isFilled3(ix, iy, iz);
   }
 
-  intersectingCell(outIdx: vec3 | Array<number>, rayOrigin: vec3, rayDir: vec3): boolean {
+  intersectingCell(outIdx: types.Real3, rayOrigin: vec3, rayDir: vec3): boolean {
     const gridDims = this.gridDimensions;
     const cellDims = this.cellDimensions;
     const pos = this.position;

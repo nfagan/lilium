@@ -1,8 +1,8 @@
 export const vertex = `
 precision highp float;
-attribute vec3 aPosition;
-attribute vec3 aTranslation;
-attribute float aRotation;
+attribute vec3 a_position;
+attribute vec3 a_translation;
+attribute float a_rotation;
 
 uniform mat4 model;
 uniform mat4 inv_trans_model;
@@ -11,6 +11,8 @@ uniform mat4 projection;
 uniform float noise_strength;
 uniform float base_x_rotation_deg;
 uniform int invert_normal;
+uniform vec3 player_position;
+uniform vec3 player_velocity;
 
 varying vec3 v_normal;
 varying vec3 v_position;
@@ -54,11 +56,94 @@ vec3 rotate_y(vec3 v, float rad) {
   return result;
 }
 
+vec3 rotate_z(vec3 v, float rad) {
+  vec3 result;
+
+  float ct = cos(rad);
+  float st = sin(rad);
+
+  vec3 row1 = vec3(ct, -st, 0);
+  vec3 row2 = vec3(st, ct, 0);
+
+  result.x = dot(v, row1);
+  result.y = dot(v, row2);
+  result.z = v.z;
+
+  return result;
+}
+
+vec4 quat_mul(vec4 a, vec4 b) {
+  vec4 result;
+
+  result.x = a.y * b.z - a.z * b.y + a.w * b.x + b.w * a.x;
+  result.y = a.z * b.x - a.x * b.z + a.w * b.y + b.w * a.y;
+  result.z = a.x * b.y - a.y * b.z + a.w * b.z + b.w * a.z;
+  //  scalar component
+  result.w = a.w * b.w - (a.x * b.x + a.y * b.y + a.z * b.z);
+  
+  return result;
+}
+
+vec4 quat_mul3(vec4 a, vec3 b) {
+  vec4 result;
+
+  result.x = a.y * b.z - a.z * b.y + a.w * b.x;
+  result.y = a.z * b.x - a.x * b.z + a.w * b.y;
+  result.z = a.x * b.y - a.y * b.z + a.w * b.z;
+  //  scalar component
+  result.w = -(a.x * b.x + a.y * b.y + a.z * b.z);
+
+  return result;
+}
+
+vec3 apply_quat3(vec4 quat, vec3 to) {
+  vec4 conj = vec4(-quat.x, -quat.y, -quat.z, quat.w);
+  vec4 quat_to = vec4(to.xyz, 0.0);
+  vec4 tmp = quat_mul(conj, quat_to);
+  tmp = quat_mul(quat, tmp);
+  return tmp.xyz;
+}
+
+vec4 quat_normalize(vec4 quat) {
+  float len = sqrt(dot(quat, quat));
+
+  vec4 result = quat;
+  result.xyz /= len;
+
+  return result;
+}
+
+vec3 handle_player_deformation(vec3 pos) {
+  //  yaw * pitch * roll
+
+  vec3 norm_velocity = normalize(player_velocity);
+  float amount_deform = length(player_velocity);
+
+  if (amount_deform == 0.0) {
+    return pos;
+  }
+
+  float theta = atan(norm_velocity.x, norm_velocity.z);
+  float phi = acos(0.0);
+
+  float ct = cos(theta/2.0);
+  float st = sin(theta/2.0);
+
+  float cp = cos(phi/2.0);
+  float sp = sin(phi/2.0);
+
+  vec4 yaw_quat = vec4(ct, 0.0, 0.0, st);
+  vec4 pitch_quat = vec4(cp, 0.0, sp, 0.0);
+  vec4 rot_quat = quat_mul(yaw_quat, pitch_quat);
+  rot_quat = quat_normalize(rot_quat);
+
+  return apply_quat3(rot_quat, pos);
+}
+
 void main() {
-  float x_pos = aPosition.x;
-  float y_pos = aPosition.y;
+  float x_pos = a_position.x;
+  float y_pos = a_position.y;
   float y_pos2 = y_pos * y_pos;
-  float y_pos3 = y_pos * y_pos * y_pos;
 
   vec3 normal = vec3(0.0, 0.0, -1.0);
 
@@ -75,7 +160,7 @@ void main() {
   float curl_amount = y_pos * curl_rad;
   float taper_amount = -(y_pos2 * sign(x_pos) * amount_taper/2.0);
   
-  vec3 use_position = aPosition;
+  vec3 use_position = a_position;
   vec3 use_normal = normal;
   
   use_position.x += taper_amount;
@@ -83,17 +168,22 @@ void main() {
   use_position = rotate_x(use_position, curl_amount);
   use_normal = rotate_x(use_normal, curl_amount);
 
-  // v_normal = mat3(inverse(transpose(model))) * use_normal;
-
   use_position = vec3(model * vec4(use_position, 1.0));
   use_normal = (inv_trans_model * vec4(use_normal, 1.0)).xyz;
 
-  use_position = rotate_y(use_position, aRotation);
-  use_normal = rotate_y(use_normal, aRotation);
+  use_position = rotate_y(use_position, a_rotation);
+  use_normal = rotate_y(use_normal, a_rotation);
+
+  // const float shear_rot_deg = 30.0 * PI / 180.0;
+
+  // use_position = rotate_x(use_position, shear_rot_deg);
+  // use_normal = rotate_x(use_normal, shear_rot_deg);
+
+  // use_position = handle_player_deformation(use_position);
 
   v_height = use_position.y;
 
-  use_position += aTranslation;
+  use_position += a_translation;
 
   v_normal = use_normal;
   v_position = use_position;

@@ -222,6 +222,10 @@ export class Vbo {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
   }
 
+  unbind(gl: WebGLRenderingContext): void {
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+  }
+
   dispose(gl: WebGLRenderingContext): void {
     if (this.vbo !== null) {
       gl.deleteBuffer(this.vbo);

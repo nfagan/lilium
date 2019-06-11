@@ -76,7 +76,7 @@ async function makeDrawables(gl: WebGLRenderingContext, progs: Programs): Promis
 function makeDrawable(gl: WebGLRenderingContext, prog: Program, 
   positions: Float32Array, indices: Uint16Array, numTriangles: number): Drawable {
   const descriptor = new BufferDescriptor();
-  descriptor.addAttribute({name: 'aPosition', size: 3, type: gl.FLOAT});
+  descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT});
   descriptor.getAttributeLocations(prog);
 
   const vao = new Vao(gl);
@@ -101,15 +101,15 @@ function makeGrassQuad(gl: WebGLRenderingContext, prog: Program): Drawable {
   const positions = debug.segmentedQuadPositions(numSegments);
 
   const descriptor = new BufferDescriptor();
-  descriptor.addAttribute({name: 'aPosition', size: 3, type: gl.FLOAT});
+  descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT});
   descriptor.getAttributeLocations(prog);
 
   const translationDescriptor = new BufferDescriptor();
-  translationDescriptor.addAttribute({name: 'aTranslation', size: 3, type: gl.FLOAT, divisor: 1});
+  translationDescriptor.addAttribute({name: 'a_translation', size: 3, type: gl.FLOAT, divisor: 1});
   translationDescriptor.getAttributeLocations(prog);
 
   const rotationDescriptor = new BufferDescriptor();
-  rotationDescriptor.addAttribute({name: 'aRotation', size: 1, type: gl.FLOAT, divisor: 1});
+  rotationDescriptor.addAttribute({name: 'a_rotation', size: 1, type: gl.FLOAT, divisor: 1});
   rotationDescriptor.getAttributeLocations(prog);
 
   const translations: Array<number> = [];
@@ -155,7 +155,7 @@ function makeCamera(gl: WebGLRenderingContext): FollowCamera {
   camera.setNear(0.1);
   camera.setFar(1000);
   camera.setFieldOfView(45 * Math.PI/180);
-  camera.move([0, 2, 0]);
+  camera.move([0, 0.5, 0]);
   camera.maxPolar = Infinity;
 
   return camera;
@@ -294,6 +294,16 @@ function drawGrass(gl: WebGLRenderingContext, prog: Program, camera: FollowCamer
     prog.setVec3(`light_position[${i}]`, lightPos[i] as vec3);
     prog.set3f(`light_color[${i}]`, 1, 1, 1);
   }
+
+  const velocity = vec3.create();
+  if (KEYBOARD.isDown(Keys.left)) velocity[0] = -1;
+  if (KEYBOARD.isDown(Keys.right)) velocity[0] = 1;
+  if (KEYBOARD.isDown(Keys.down)) velocity[2] = -1;
+  if (KEYBOARD.isDown(Keys.up)) velocity[2] = 1;
+  vec3.normalize(velocity, velocity);
+
+  prog.setVec3('player_position', camera.target);
+  prog.setVec3('player_velocity', velocity);
 
   prog.set1i('num_point_lights', lightPos.length);
 
