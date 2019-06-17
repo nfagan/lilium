@@ -1,9 +1,9 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, Vbo, Ebo, 
   BufferDescriptor, types, math, parse } from '../src/gl';
-import { Result, loadText, PrimitiveTypedArray } from '../src/util';
+import { Result, loadText, loadImage, PrimitiveTypedArray, loadAudioBuffer } from '../src/util';
 import { vec3, mat4, glMatrix } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
-import * as grassSources from './shaders/debug-grass';
+import * as grassSources from './shaders/debug-grass2';
 import { NumberSampler } from '../src/audio/audio-sampler';
 
 const MOUSE_STATE: {x: number, y: number, lastX: number, lastY: number, clicked: boolean, down: boolean} = {
@@ -213,10 +213,6 @@ function makeVelocityDeformationTexture(gl: WebGLRenderingContext, textureSize: 
   const srcType = gl.UNSIGNED_BYTE;
   const textureData = new Uint8Array(numTexturePixels * 4);
 
-  for (let i = 0; i < numTexturePixels; i++) {
-    textureData[i*4+1] = 255;
-  }
-
   gl.texImage2D(gl.TEXTURE_2D, level, internalFormat, width, height, border, srcFormat, srcType, textureData);
 
   return {
@@ -249,23 +245,6 @@ async function makeDrawables(gl: WebGLRenderingContext, progs: Programs, grassTi
   } catch (err) {
     return Result.Err(err.message);
   }
-}
-
-function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
-  return new Promise((resolve, reject) => {
-    const source = audioContext.createBufferSource();
-    const req = new XMLHttpRequest();
-    req.open('GET', '/sound/lf_noise_short.m4a', true);
-    req.responseType = 'arraybuffer';
-    req.onload = () => {
-      const audioData = req.response;
-      audioContext.decodeAudioData(audioData, (buffer) => {
-        source.buffer = buffer;
-        resolve(source);
-      }, err => reject(err));
-    }
-    req.send();
-  });
 }
 
 function makeDrawable(gl: WebGLRenderingContext, prog: Program, 
@@ -303,7 +282,6 @@ function makeGrassQuad(gl: WebGLRenderingContext, prog: Program, grassTileInfo: 
   const grassDim = grassTileInfo.dimension;
   const grassDensity = grassTileInfo.density;
 
-  // const grassDensity = 0.3;
   const positions = debug.segmentedQuadPositions(numSegments);
 
   const posDescriptor = new BufferDescriptor();
@@ -337,7 +315,7 @@ function makeGrassQuad(gl: WebGLRenderingContext, prog: Program, grassTileInfo: 
       translations.push(0);
       translations.push(zPos);
 
-      rotations.push(Math.random() * glMatrix.toRadian(360));
+      rotations.push(Math.random() * Math.PI * 2);
 
       uvs.push(xPos / maxDim);
       uvs.push(zPos / maxDim);
@@ -397,18 +375,11 @@ async function loadModels(): Promise<parse.Obj> {
 }
 
 async function loadGrassImage(): Promise<HTMLImageElement> {  
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    let img = document.createElement('img')
+  return loadImage('/texture/leaf3.png');
+}
 
-    img.onload = (e) => {
-      window.URL.revokeObjectURL(img.src)
-      resolve(img);
-    }
-
-    img.onerror = (e) => reject(e);
-
-    img.src = '/texture/leaf3.png';
-  });
+function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
+  return loadAudioBuffer(audioContext, '/sound/lf_noise_short.m4a');
 }
 
 async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
@@ -489,12 +460,10 @@ function updateTexture2DData(gl: WebGLRenderingContext, texture: Texture2D): voi
 }
 
 function getWindVelocity(out: types.Real3): void {
-  if (KEYBOARD.isDown(Keys.left)) out[0] = 1;
-  if (KEYBOARD.isDown(Keys.right)) out[0] = 0.5;
+  if (KEYBOARD.isDown(Keys.left)) out[0] = -1;
+  if (KEYBOARD.isDown(Keys.right)) out[0] = 1;
+  if (KEYBOARD.isDown(Keys.down)) out[2] = -1;
   if (KEYBOARD.isDown(Keys.up)) out[2] = 1;
-  if (KEYBOARD.isDown(Keys.down)) out[2] = 0.5;
-  
-  math.norm3(out, out);
 }
 
 function updateDeformationTextures(gl: WebGLRenderingContext, textures: Textures, 
@@ -508,8 +477,8 @@ grassTileInfo: GrassTile, windAudioSamplers: Array<NumberSampler>): void {
     return;
   }
 
-  const scaleX = 1.5;
-  const scaleZ = 1.5;
+  const scaleX = 1;
+  const scaleZ = 1;
 
   const normVelocity = vec3.normalize(vec3.create(), playerVelocity as vec3);
 
@@ -562,33 +531,32 @@ grassTileInfo: GrassTile, windAudioSamplers: Array<NumberSampler>): void {
 
   const vx = math.clamp(normVelocity[0], -1, 1);
   const vz = math.clamp(normVelocity[2], -1, 1);
-  const decayAmt = 1.5;
+  const decayAmt = 1.1;
 
-  const vx01 = Math.abs(vx);
-  const vz01 = Math.abs(vz);
-  const signX = vx === 0 ? 1 : Math.sign(vx);
-  const signZ = vz === 0 ? 1 : Math.sign(vz);
-  const assignSignX = signX === 1 ? 255 : 0;
-  const assignSignZ = signZ === 1 ? 255 : 0;
+  const vx01 = (vx + 1) * 0.5;
+  const vz01 = (vz + 1) * 0.5;
 
-  for (let i = 0; i < amountTextureData.length; i++) {
-    const currAmt = amountTextureData[i];
-    const newAmt = currAmt / decayAmt;
-    amountTextureData[i] = newAmt;
-  }
+  const windVx = 0.05;
+  const windVz = 0.05;
 
-  const windVelocity = [0, 0, 1];
-  getWindVelocity(windVelocity);
-  const windVx = windVelocity[0];
-  const windVz = windVelocity[2];
+  // const windVelocity = [0.05, 0, 0.05];
+  // getWindVelocity(windVelocity);
+  // const windVx = windVelocity[0];
+  // const windVz = windVelocity[2];
+  const numPixelsTexture = windTextureData.length/4;
 
-  for (let i = 0; i < windTextureData.length/4; i++) {
+  for (let i = 0; i < numPixelsTexture; i++) {
     const sample = windAudioSamplers[i].nextSample();
-    windTextureData[i*4+0] = 255 * windVx;
+
+    const vx = (windVx + 1) * 0.5;
+    const vz = (windVz + 1) * 0.5;
+
+    windTextureData[i*4+0] = 255 * vx;
     windTextureData[i*4+1] = 0;
-    windTextureData[i*4+2] = 255 * windVz;
-    // windTextureData[i*4+3] = 255 * sample;
-    windTextureData[i*4+3] = 0;
+    windTextureData[i*4+2] = 255 * vz;
+    windTextureData[i*4+3] = 255 * sample * 1.0;
+
+    velocityTextureData[i*4+3] /= decayAmt;    
   }
 
   for (let i = 0; i < numPixelsX; i++) {
@@ -597,40 +565,23 @@ grassTileInfo: GrassTile, windAudioSamplers: Array<NumberSampler>): void {
       const idxZ = j + startPixelZ;
 
       const pixelIdx = idxZ * texWidth + idxX;
-      const floorVx = Math.floor(vx01 * 255);
-      const floorVz = Math.floor(vz01 * 255);
       const velTextureIdx = pixelIdx * 4;
-      const useDeform = floorVx !== 0 || floorVz !== 0;
+      
+      let dirX = (idxX - midPixelX) / (midPixelX - startPixelX);
+      let dirZ = (idxZ - midPixelZ) / (midPixelZ - startPixelZ);
 
-      if (false) {
-        velocityTextureData[velTextureIdx+0] = floorVx;
-        velocityTextureData[velTextureIdx+1] = floorVz;
-        velocityTextureData[velTextureIdx+2] = assignSignX;
-        velocityTextureData[velTextureIdx+3] = assignSignZ;
+      const normX = (-dirX + 1) * 0.5;
+      const normZ = (dirZ + 1) * 0.5;
 
-        amountTextureData[pixelIdx] = 0;
-      } else {
-        const dirX = (idxX - midPixelX) / texWidth;
-        const dirZ = (idxZ - midPixelZ) / texWidth;
-        let normX = Math.abs(dirX);
-        let normZ = Math.abs(dirZ);
-
-        const len = Math.sqrt(normX*normX + normZ*normZ);
-        normX /= len;
-        normZ /= len;
-
-        velocityTextureData[velTextureIdx+0] = Math.floor(normX * 255);
-        velocityTextureData[velTextureIdx+1] = Math.floor(normZ * 255);
-        velocityTextureData[velTextureIdx+2] = -Math.sign(dirX);
-        velocityTextureData[velTextureIdx+3] = -Math.sign(dirZ);
-
-        amountTextureData[pixelIdx] = 10;
-      }
+      velocityTextureData[velTextureIdx+0] = normX * 255;
+      velocityTextureData[velTextureIdx+1] = 0;
+      velocityTextureData[velTextureIdx+2] = normZ * 255;
+      velocityTextureData[velTextureIdx+3] = 100;
     }
   }
 
   updateTexture2DData(gl, velocityTexture);
-  updateTexture2DData(gl, amountTexture);
+  // updateTexture2DData(gl, amountTexture);
   updateTexture2DData(gl, windTexture);
 }
 
@@ -640,6 +591,7 @@ function beginRender(gl: WebGLRenderingContext, camera: FollowCamera): void {
 
   if (gl.canvas.width !== gl.canvas.clientWidth || gl.canvas.height !== gl.canvas.clientHeight) {
     const dpr = window.devicePixelRatio || 1;
+    // const dpr = 1;
     gl.canvas.width = gl.canvas.clientWidth * dpr;
     gl.canvas.height = gl.canvas.clientHeight * dpr;
     camera.setAspect(gl.canvas.clientWidth / gl.canvas.clientHeight);
@@ -652,7 +604,7 @@ function beginRender(gl: WebGLRenderingContext, camera: FollowCamera): void {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
 
-function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, target: types.Real3, drawables: Drawables): void {
+function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, target: types.Real3, playerScale: types.Real3, drawables: Drawables): void {
   const model = mat4.create();
   const cubeDrawFunc = drawables.cube.drawFunction;
 
@@ -663,11 +615,32 @@ function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, target: t
     debug.drawAabb(gl, prog, model, DEBUG_AABB, [0, 1, 0], cubeDrawFunc);
   }
 
-  debug.drawAt(gl, prog, model, target, 0.25, [1, 1, 1], cubeDrawFunc);
+  const useDims = [playerScale[0]/2, playerScale[1]/2, playerScale[2]/2];
+  debug.drawAt(gl, prog, model, target, useDims, [1, 1, 1], cubeDrawFunc);
 
   gl.disable(gl.CULL_FACE);
   drawables.quad.vao.bind();
   debug.drawAxesPlanes(gl, prog, model, drawables.quad.drawFunction);
+}
+
+function drawGroundPlane(gl: WebGLRenderingContext, prog: Program, plane: Drawable, grassTileInfo: GrassTile): void {
+  const model = mat4.create();
+  const dim = grassTileInfo.dimension * grassTileInfo.density;
+
+  mat4.rotateX(model, model, glMatrix.toRadian(90));
+  mat4.scale(model, model, [dim/2 + 0.5, dim/2 + 0.5, 1]);
+
+  model[12] = dim/2;
+  model[13] = 1;
+  model[14] = dim/2;
+
+  const drawFunc = plane.drawFunction;
+
+  plane.vao.bind();
+  prog.setMat4('model', model);
+  prog.set3f('color', 0, 0.45, 0.2);
+
+  drawFunc(gl);
 }
 
 function drawLights(gl: WebGLRenderingContext, prog: Program, cube: Drawable, 
@@ -682,26 +655,20 @@ function drawGrass(gl: WebGLRenderingContext, prog: Program, camera: FollowCamer
   drawables: Drawables, lightPos: Array<types.Real3>, lightColor: Array<types.Real3>): void {
   const model = mat4.create();
   const invTransModel = mat4.create();
-  const scale = [0.02, 1, 0.2];
+  const scale = [0.05, 1, 1];
 
-  // mat4.rotateY(model, model, glMatrix.toRadian(60));
   mat4.scale(model, model, scale);
-
   mat4.transpose(invTransModel, model);
   mat4.invert(invTransModel, invTransModel);
 
   prog.setMat4('model', model);
   prog.setMat4('inv_trans_model', invTransModel);
-  // prog.set1f('noise_strength', Math.random());
   prog.set3f('color', 0.5, 1, 0.5);
-  // 192, 255, 0
   prog.setVec3('camera_position', camera.position);
-  prog.set1f('base_x_rotation_deg', 40.0);
   prog.set1i('invert_normal', 0);
 
   for (let i = 0; i < lightPos.length; i++) {
     prog.setVec3(`light_position[${i}]`, lightPos[i] as vec3);
-    // prog.setVec3(`light_color[${i}]`, lightColor[i] as vec3);
     prog.set3f(`light_color[${i}]`, 1, 1, 1);
   }
 
@@ -729,25 +696,13 @@ function handleGrassDrawing(gl: WebGLRenderingContext, programs: Programs, camer
   grassProg.use();
   debug.setViewProjection(programs.grass, view, proj);
 
-  const velocityTexture = textures.velocity;
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, velocityTexture.texture);
-  grassProg.set1i('velocity_texture', 0);
+  gl.bindTexture(gl.TEXTURE_2D, textures.wind.texture);
+  grassProg.set1i('wind_texture', 0);
 
-  const amountTexture = textures.amount;
   gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D, amountTexture.texture);
-  grassProg.set1i('amount_texture', 1);
-
-  const windTexture = textures.wind;
-  gl.activeTexture(gl.TEXTURE2);
-  gl.bindTexture(gl.TEXTURE_2D, windTexture.texture);
-  grassProg.set1i('wind_texture', 2);
-
-  // const grassTexture = textures.grassColor;
-  // gl.activeTexture(gl.TEXTURE3);
-  // gl.bindTexture(gl.TEXTURE_2D, grassTexture.texture);
-  // grassProg.set1i('grass_texture', 3);
+  gl.bindTexture(gl.TEXTURE_2D, textures.velocity.texture);
+  grassProg.set1i('velocity_texture', 1);
 
   drawGrass(gl, programs.grass, camera, drawables, lightPos, lightColor);
 }
@@ -757,9 +712,11 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   beginRender(gl, camera);
 
   const velocity = [0, 0, 0];
+  const playerDims = [0.75, 1, 0.75];
+
   updatePlayerMovement(velocity, camera);
   updateCamera(camera, velocity);
-  updateDeformationTextures(gl, textures, velocity, camera.target, [0.5, 0.5, 0.5], grassTileInfo, windAudioSamplers);
+  updateDeformationTextures(gl, textures, velocity, camera.target, playerDims, grassTileInfo, windAudioSamplers);
 
   const simpleProg = programs.simple;
   simpleProg.use();
@@ -768,7 +725,9 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   const proj = camera.makeProjectionMatrix();
 
   debug.setViewProjection(simpleProg, view, proj);
-  drawDebugComponents(gl, simpleProg, camera.target, drawables);
+  drawDebugComponents(gl, simpleProg, camera.target, playerDims, drawables);
+
+  drawGroundPlane(gl, simpleProg, drawables.quad, grassTileInfo);
 
   handleGrassDrawing(gl, programs, camera, drawables, textures, view, proj);
 }

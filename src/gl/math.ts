@@ -1,4 +1,6 @@
 import { vec3 } from 'gl-matrix';
+import * as types from './types';
+import { BuiltinRealArray } from '../util';
 
 export const EPSILON = 0.000001;
 
@@ -9,19 +11,46 @@ export function distance3(x0: number, y0: number, z0: number, x1: number, y1: nu
   return Math.sqrt(dx*dx + dy*dy + dz*dz);
 }
 
-export function sub3(out: Array<number> | vec3, a: Array<number> | vec3, b: Array<number> | vec3): void {
+export function clamp<T>(v: T, minBound: T, maxBound: T): T {
+  if (v < minBound) {
+    return minBound;
+  } else if (v > maxBound) {
+    return maxBound;
+  } else {
+    return v;
+  }
+}
+
+export function clamp01(v: number): number {
+  return clamp<number>(v, 0, 1);
+}
+
+export function sub3(out: types.Real3, a: types.Real3, b: types.Real3): void {
   for (let i = 0; i < 3; i++) {
     out[i] = a[i] - b[i];
   }
 }
 
-export function add3(out: Array<number> | vec3, a: Array<number> | vec3, b: Array<number> | vec3): void {
+export function add3(out: types.Real3, a: types.Real3, b: types.Real3): void {
   for (let i = 0; i < 3; i++) {
     out[i] = a[i] + b[i];
   }
 }
 
-export function arrayMin(arr: Float32Array | Array<number>): number {
+export function norm3(out: types.Real3, a: types.Real3): void {
+  const len = Math.sqrt(a[0]*a[0] + a[1]*a[1] + a[2]*a[2]);
+  if (len !== 0) {
+    out[0] = a[0] / len;
+    out[1] = a[1] / len;
+    out[2] = a[2] / len;
+  } else {
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+  }
+}
+
+export function arrayMin(arr: BuiltinRealArray): number {
   let min = Infinity;
 
   for (let i = 0; i < arr.length; i++) {
@@ -33,7 +62,7 @@ export function arrayMin(arr: Float32Array | Array<number>): number {
   return min;
 }
 
-export function arrayMax(arr: Float32Array | Array<number>): number {
+export function arrayMax(arr: BuiltinRealArray): number {
   let max = -Infinity;
 
   for (let i = 0; i < arr.length; i++) {
@@ -43,6 +72,17 @@ export function arrayMax(arr: Float32Array | Array<number>): number {
   }
 
   return max;
+}
+
+export function normalize01(out: BuiltinRealArray, a: BuiltinRealArray): void {
+  const minValue = arrayMin(a);
+  const maxValue = arrayMax(a);
+  const len = Math.min(out.length, a.length);
+  const minMaxRange = maxValue - minValue;
+
+  for (let i = 0; i < len; i++) {
+    out[i] = (a[i] - minValue) / minMaxRange;
+  }
 }
 
 export class Ray {

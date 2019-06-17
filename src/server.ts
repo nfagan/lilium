@@ -22,6 +22,18 @@ app.get('/model/:modelName', (req: Request, res: Response) => {
 	sendFileOr404(res, filePath);
 });
 
+app.get('/sound/:soundName', (req: Request, res: Response) => {
+  const soundPath = req.params.soundName.replace(':', '/');
+  const filePath = path.join(__dirname, 'res/sounds/', soundPath);
+	sendFileOr404(res, filePath);
+});
+
+app.get('/texture/:textureName', (req: Request, res: Response) => {
+  const texturePath = req.params.textureName.replace(':', '/');
+  const filePath = path.join(__dirname, 'res/textures/', texturePath);
+	sendFileOr404(res, filePath);
+});
+
 http.listen(process.env.PORT || 3000, () => {
   console.log('listening ...');
 });

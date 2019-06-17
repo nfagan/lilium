@@ -1,21 +1,10 @@
 import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
+import { BuiltinRealArray } from '../util';
 
 export const enum Shader {
   Vertex,
   Fragment 
 };
-
-export type PrimitiveTypedArray = 
-  Float32Array |
-  Float64Array |
-  Uint8Array | 
-  Uint16Array | 
-  Uint32Array | 
-  Int8Array |
-  Int16Array |
-  Int32Array;
-
-type BuiltinRealArray = PrimitiveTypedArray | Array<number>;
 
 export type Real4 = BuiltinRealArray | vec4 | mat4;
 export type Real3 = Real4 | vec3;

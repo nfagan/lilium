@@ -262,7 +262,8 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
 
   document.body.addEventListener('touchstart', e => {
     e.preventDefault();
-    if (e.touches.length === 0) {
+    mouseState.down = true;
+    if (e.touches.length > 0) {
       mouseState.lastX = e.touches[0].clientX;
       mouseState.lastY = e.touches[0].clientY;
     }
@@ -282,6 +283,7 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
   document.body.addEventListener('touchend', e => {
     mouseState.lastY = null;
     mouseState.lastX = null;
+    mouseState.down = false;
   });
   document.body.addEventListener('mousedown', e => mouseState.down = true);
   document.body.addEventListener('mouseup', e => mouseState.down = false);

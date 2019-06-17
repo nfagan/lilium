@@ -365,23 +365,27 @@ function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, drawables
   gl.enable(gl.CULL_FACE);
 }
 
-function drawInstancedVoxelGrid(gl: WebGLRenderingContext, programs: Programs, drawables: Drawables, voxelGridInfo: VoxelGridInfo, view: mat4, proj: mat4): void {
+function drawSelectedVoxel(gl: WebGLRenderingContext, prog: Program, drawable: Drawable, voxelGridInfo: VoxelGridInfo): void {
+  const cellCenter = vec3.create();
+  const useCellDims = vec3.create();
   const lastLinearIdx = voxelGridInfo.lastLinearInd;
+
+  for (let i = 0; i < 3; i++) {
+    cellCenter[i] = voxelGridInfo.filled[i + lastLinearIdx];
+    const szOffset = 0.05;
+    useCellDims[i] = voxelGridInfo.grid.cellDimensions[i] / 2 + szOffset;
+  }
+
+  drawable.vao.bind();
+  voxelGridInfo.grid.getCellCenter(cellCenter, cellCenter);
+  debug.drawAt(gl, prog, mat4.create(), cellCenter, useCellDims, [1, 1, 1], drawable.drawFunction);
+}
+
+function drawInstancedVoxelGrid(gl: WebGLRenderingContext, programs: Programs, drawables: Drawables, voxelGridInfo: VoxelGridInfo, view: mat4, proj: mat4): void {
   programs.simple.use();
 
-  if (lastLinearIdx !== null) {
-    const cellCenter = vec3.create();
-    const useCellDims = vec3.create();
-
-    for (let i = 0; i < 3; i++) {
-      cellCenter[i] = voxelGridInfo.filled[i + lastLinearIdx];
-      const szOffset = 0.05;
-      useCellDims[i] = voxelGridInfo.grid.cellDimensions[i] / 2 + szOffset;
-    }
-
-    drawables.cube.vao.bind();
-    voxelGridInfo.grid.getCellCenter(cellCenter, cellCenter);
-    debug.drawAt(gl, programs.simple, mat4.create(), cellCenter, useCellDims, [1, 1, 1], drawables.cube.drawFunction);
+  if (voxelGridInfo.lastLinearInd !== null) {
+    drawSelectedVoxel(gl, programs.simple, drawables.cube, voxelGridInfo);
   }
   
   const instancedProg = programs.instanced;
@@ -555,7 +559,7 @@ function handleVoxelSelection(voxelGridInfo: VoxelGridInfo, gl: WebGLRenderingCo
   }
 }
 
-function handleVoxelAddition(voxelGridInfo: VoxelGridInfo, playerAabb: math.Aabb): void {
+function handleVoxelAddition(voxelGridInfo: VoxelGridInfo, playerAabb: math.Aabb, forwardDir: types.Real3): void {
   if (voxelGridInfo.lastLinearInd === null) {
     return;
   }
@@ -566,30 +570,54 @@ function handleVoxelAddition(voxelGridInfo: VoxelGridInfo, playerAabb: math.Aabb
 
   let markedKey: number = -1;
 
+  const amtX = forwardDir[0];
+  const amtZ = forwardDir[2];
+
+  const mapping = [0, 1, 2];
+  const inds = [ix, iy, iz];
+  const signs = [1, 1, 1];
+  let isReverse: boolean = false;
+  
+  if (Math.abs(amtX) > Math.abs(amtZ)) {
+    mapping[0] = 2;
+    mapping[2] = 0;
+    isReverse = Math.sign(amtX) === -1;
+  } else {
+    isReverse = Math.sign(amtZ) === -1;
+  }
+
+  if (isReverse) {
+    signs[0] = 1;
+    signs[2] = -1;
+  } else {
+    signs[0] = -1;
+    signs[2] = 1;
+  }
+
   if (KEYBOARD.isDown(Keys.w)) {
-    iz++;
+    inds[mapping[2]] -= signs[2];
     markedKey = Keys.w;
   } else if (KEYBOARD.isDown(Keys.s)) {
-    iz--;
+    inds[mapping[2]] += signs[2];
     markedKey = Keys.s;
   } else if (KEYBOARD.isDown(Keys.a)) {
-    ix--;
+    inds[mapping[0]] -= signs[0];
     markedKey = Keys.a;
   } else if (KEYBOARD.isDown(Keys.d)) {
-    ix++;
+    inds[mapping[0]] += signs[0];
     markedKey = Keys.d;
   } else if (KEYBOARD.isDown(Keys.q)) {
-    iy++;
+    inds[1]++;
     markedKey = Keys.q;
   } else if (KEYBOARD.isDown(Keys.z)) {
-    iy--;
+    inds[1]--;
     markedKey = Keys.z;
   }
 
   const anyMarked = markedKey !== -1;
 
   if (anyMarked) {
-    addVoxelCell(voxelGridInfo, [ix, iy, iz], playerAabb);
+    addVoxelCell(voxelGridInfo, inds, playerAabb);
     GAME_STATE.voxelManipulationState = VoxelManipulationStates.selecting;
     KEYBOARD.markUp(markedKey);
   }
@@ -672,10 +700,9 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
       handleVoxelSelection(voxelGridInfo, gl, camera, view, proj);
       break;
     case VoxelManipulationStates.creating:
-      handleVoxelAddition(voxelGridInfo, player.aabb);
+      handleVoxelAddition(voxelGridInfo, player.aabb, camera.getFront(vec3.create()));
       break;
   }
-
 
   debug.setViewProjection(simpleProg, view, proj);
   drawDebugComponents(gl, simpleProg, drawables, player);

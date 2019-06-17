@@ -17,6 +17,16 @@ app.get('/model/:modelName', function (req, res) {
     var filePath = path.join(__dirname, 'res/models/', objPath);
     sendFileOr404(res, filePath);
 });
+app.get('/sound/:soundName', function (req, res) {
+    var soundPath = req.params.soundName.replace(':', '/');
+    var filePath = path.join(__dirname, 'res/sounds/', soundPath);
+    sendFileOr404(res, filePath);
+});
+app.get('/texture/:textureName', function (req, res) {
+    var texturePath = req.params.textureName.replace(':', '/');
+    var filePath = path.join(__dirname, 'res/textures/', texturePath);
+    sendFileOr404(res, filePath);
+});
 http.listen(process.env.PORT || 3000, function () {
     console.log('listening ...');
 });
