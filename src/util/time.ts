@@ -9,6 +9,10 @@ export class Stopwatch {
     return performance.now() - this.startTime;
   }
 
+  elapsedSecs(): number {
+    return this.elapsed() / 1e3;
+  }
+
   reset(): void {
     this.startTime = performance.now();
   }

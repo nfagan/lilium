@@ -102,6 +102,10 @@ export class Program {
     this.gl.uniform1i(loc, x);
   }
 
+  setTexture(name: string, index: number): void {
+    this.set1i(name, index);
+  }
+
   setVec3(name: string, value: types.Real3): void {
     this.set3f(name, value[0], value[1], value[2]);
   }

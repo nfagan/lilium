@@ -50,6 +50,12 @@ export function norm3(out: types.Real3, a: types.Real3): void {
   }
 }
 
+export function scale3(out: types.Real3, a: types.Real3, by: number): void {
+  for (let i = 0; i < 3; i++) {
+    out[i] = a[i] * by;
+  }
+}
+
 export function arrayMin(arr: BuiltinRealArray): number {
   let min = Infinity;
 
@@ -72,6 +78,22 @@ export function arrayMax(arr: BuiltinRealArray): number {
   }
 
   return max;
+}
+
+export function arrayScale(out: BuiltinRealArray, a: BuiltinRealArray, by: number): void {
+  const len = Math.min(out.length, a.length);
+
+  for (let i = 0; i < len; i++) {
+    out[i] = a[i] * by;
+  }
+}
+
+export function dtSecScale(dt: number, value: number): number {
+  return (dt / (1/60)) * value;
+}
+
+export function dtSecScaleInv(dt: number, value: number): number {
+  return (1 / (dt / (1/60))) * value;
 }
 
 export function normalize01(out: BuiltinRealArray, a: BuiltinRealArray): void {

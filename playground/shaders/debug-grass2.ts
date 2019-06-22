@@ -11,6 +11,7 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform float base_x_rotation_deg;
 uniform int invert_normal;
+uniform vec3 origin_offset;
 
 uniform sampler2D wind_texture;
 uniform sampler2D velocity_texture;
@@ -181,6 +182,7 @@ void main() {
   //
 
   use_position += a_translation;
+  use_position += origin_offset;
 
   v_normal = use_normal;
   v_position = use_position;

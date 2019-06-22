@@ -83,7 +83,7 @@ function makeWindAudioSamplers(numSamplers: number, bufferSource: AudioBufferSou
   const buffer = bufferSource.buffer;
   const channelData = buffer.getChannelData(0);
   const samplers: Array<NumberSampler> = [];
-
+  
   math.normalize01(channelData, channelData);
   
   for (let i = 0; i < numSamplers; i++) {
@@ -554,7 +554,7 @@ grassTileInfo: GrassTile, windAudioSamplers: Array<NumberSampler>): void {
     windTextureData[i*4+0] = 255 * vx;
     windTextureData[i*4+1] = 0;
     windTextureData[i*4+2] = 255 * vz;
-    windTextureData[i*4+3] = 255 * sample * 1.0;
+    windTextureData[i*4+3] = 255 * sample;
 
     velocityTextureData[i*4+3] /= decayAmt;    
   }
@@ -591,7 +591,6 @@ function beginRender(gl: WebGLRenderingContext, camera: FollowCamera): void {
 
   if (gl.canvas.width !== gl.canvas.clientWidth || gl.canvas.height !== gl.canvas.clientHeight) {
     const dpr = window.devicePixelRatio || 1;
-    // const dpr = 1;
     gl.canvas.width = gl.canvas.clientWidth * dpr;
     gl.canvas.height = gl.canvas.clientHeight * dpr;
     camera.setAspect(gl.canvas.clientWidth / gl.canvas.clientHeight);
@@ -666,6 +665,7 @@ function drawGrass(gl: WebGLRenderingContext, prog: Program, camera: FollowCamer
   prog.set3f('color', 0.5, 1, 0.5);
   prog.setVec3('camera_position', camera.position);
   prog.set1i('invert_normal', 0);
+  prog.set3f('origin_offset', 0, 0, 0);
 
   for (let i = 0; i < lightPos.length; i++) {
     prog.setVec3(`light_position[${i}]`, lightPos[i] as vec3);

@@ -69,6 +69,13 @@ export class VoxelGrid {
     outIdx[2] = Math.floor((z - this.position[2]) / this.cellDimensions[2]);
   }
 
+  getWorldCenter(outPoint: types.Real3): void {
+    for (let i = 0; i < 3; i++) {
+      const span = this.cellDimensions[i] * this.gridDimensions[i];
+      outPoint[i] = span/2 + this.position[i];
+    }
+  }
+
   isInBoundsVoxelIndex(cell: types.Real3): boolean {
     const gridDims = this.gridDimensions;
 
@@ -76,7 +83,7 @@ export class VoxelGrid {
     const iy = cell[1];
     const iz = cell[2];
 
-    if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
+    if (ix < 0 || ix >= gridDims[0] || iy < 0 || iy >= gridDims[1] || iz < 0 || iz >= gridDims[2]) {
       return false;
     } else {
       return true;
@@ -94,7 +101,7 @@ export class VoxelGrid {
     const iy = cell[1];
     const iz = cell[2];
 
-    if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
+    if (ix < 0 || ix >= gridDims[0] || iy < 0 || iy >= gridDims[1] || iz < 0 || iz >= gridDims[2]) {
       console.warn('Attempted to mark an out of bounds cell: ', ix, iy, iz);
       return;
     }
@@ -150,7 +157,7 @@ export class VoxelGrid {
   isFilled3(ix: number, iy: number, iz: number): boolean {
     const gridDims = this.gridDimensions;
 
-    if (ix < 0 || ix > gridDims[0] || iy < 0 || iy > gridDims[1] || iz < 0 || iz > gridDims[2]) {
+    if (ix < 0 || ix >= gridDims[0] || iy < 0 || iy >= gridDims[1] || iz < 0 || iz >= gridDims[2]) {
       return false;
     }
 

@@ -1,16 +1,14 @@
 import { math, types } from '../gl';
-import { Stopwatch } from '../util'
 import { vec3 } from 'gl-matrix';
+import { MultiJumpHandler } from '.';
 
 export class Player {
   public upVelocity: number = 0;
   public isOnGround: boolean = true;
   public alwaysAllowJump: boolean = false;
   public readonly aabb: math.Aabb;
-  private jumpStopwatch: Stopwatch;
-  private nJumps: number = 0;
-  private readonly doubleJumpTimeoutMs: number = 350;
   private readonly front: types.Real3;
+  private doubleJumpHandler = new MultiJumpHandler(2);
 
   constructor(dims: vec3 | Array<number>) {
     this.front = [0, 0, 1];
@@ -23,8 +21,6 @@ export class Player {
     this.aabb.maxX = dims[0];
     this.aabb.maxY = dims[1];
     this.aabb.maxZ = dims[2];
-
-    this.jumpStopwatch = new Stopwatch();
   }
 
   updateFront(vel: types.Real3): void {
@@ -42,23 +38,18 @@ export class Player {
   }
 
   canJump(): boolean {
-    return this.alwaysAllowJump || this.isOnGround || this.canDoubleJump();
-  }
-
-  private canDoubleJump(): boolean {
-    return this.nJumps < 2 && this.jumpStopwatch.elapsed() < this.doubleJumpTimeoutMs;
+    return this.alwaysAllowJump || this.isOnGround || this.doubleJumpHandler.canJump();
   }
 
   jump(): void {
     this.upVelocity = 0.3;
     this.isOnGround = false;
-    this.nJumps++;
-    this.jumpStopwatch.reset();
+    this.doubleJumpHandler.jump();
   }
 
   ground(): void {
     this.upVelocity = 0;
     this.isOnGround = true;
-    this.nJumps = 0;
+    this.doubleJumpHandler.ground();
   }
 }

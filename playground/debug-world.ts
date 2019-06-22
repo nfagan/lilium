@@ -670,8 +670,8 @@ function updateVoxelInstances(gl: WebGLRenderingContext, voxelGridInfo: VoxelGri
 
   for (let i = 0; i < numToUpdate; i++) {
     tmpArray[i*3] = Math.random();
-    tmpArray[i*3+1] = 0.9;
-    tmpArray[i*3+2] = Math.random();
+    tmpArray[i*3+1] = 0.75 * Math.random();
+    tmpArray[i*3+2] = 0.1 * Math.random();
   }
   
   colorVbo.bind(gl);

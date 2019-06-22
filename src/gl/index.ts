@@ -11,7 +11,9 @@ export * from './voxel-grid'
 export * from './shader';
 export * from './program';
 export * from './follow-camera';
+export * from './camera';
 export * from './vao';
+export * from './texture';
 
 export { 
   collision,

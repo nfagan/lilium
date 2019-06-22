@@ -1,5 +1,5 @@
 import { Program } from './program';
-import { PrimitiveTypedArray } from './types';
+import { PrimitiveTypedArray } from '../util/types';
 
 export type AttributeDescriptor = {
   name: string,
@@ -184,7 +184,8 @@ export class Vbo {
 
     let offset = 0;
     const numComponents = descriptor.numComponents();
-    const attrs = descriptor.getAttributes().sort((a, b) => a.location - b.location);
+    // const attrs = descriptor.getAttributes().sort((a, b) => a.location - b.location);
+    const attrs = descriptor.getAttributes();
 
     for (let i = 0; i < attrs.length; i++) {
       const attr = attrs[i];

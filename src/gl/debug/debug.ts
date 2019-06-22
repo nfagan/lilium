@@ -1,5 +1,5 @@
 import { Result } from '../../util';
-import { types, Program, math, Keyboard, Keys, Vao, VoxelGrid } from '..';
+import { types, Program, math, Keyboard, Keys, Vao, ICamera, FollowCamera } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
 export function segmentedQuadPositions(numSegments: number): Float32Array {
@@ -43,6 +43,40 @@ export function segmentedQuadPositions(numSegments: number): Float32Array {
   return new Float32Array(positions);
 }
 
+export function cubeNormals(): Float32Array {
+  return new Float32Array([
+    0, 0, -1,
+    0, 0, -1,
+    0, 0, -1,
+    0, 0, -1,
+
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+    0, 0, 1,
+        
+    0, -1, 0,
+    0, -1, 0,  
+    0, -1, 0,
+    0, -1, 0,
+      
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+    0, 1, 0,
+        
+    -1, 0, 0,
+    -1, 0, 0,
+    -1, 0, 0,
+    -1, 0, 0,
+        
+    1, 0, 0,
+    1, 0, 0,
+    1, 0, 0,
+    1, 0, 0,
+  ]);
+}
+
 export function cubePositions(): Float32Array {
   return new Float32Array([
     -1.0, -1.0,  1.0,
@@ -74,6 +108,94 @@ export function cubePositions(): Float32Array {
     -1.0, -1.0,  1.0,
     -1.0,  1.0,  1.0,
     -1.0,  1.0, -1.0,
+  ]);
+}
+
+export function sphereInterleavedDataAndIndices(vertexCount: number = 64): {vertexData: Float32Array, indices: Uint16Array} {
+  const vertexData: Array<number> = [];
+
+  for (let i = 0; i < vertexCount; i++) {
+    for (let j = 0; j < vertexCount; j++) {
+      let xSegment = j / (vertexCount-1);
+      let ySegment = i / (vertexCount-1);
+
+      let xPos = Math.cos(xSegment * 2 * Math.PI) * Math.sin(ySegment * Math.PI);
+      let yPos = Math.cos(ySegment * Math.PI);
+      let zPos = Math.sin(xSegment * 2 * Math.PI) * Math.sin(ySegment * Math.PI);
+
+      vertexData.push(xPos);
+      vertexData.push(yPos);
+      vertexData.push(zPos);
+
+      vertexData.push(xSegment);
+      vertexData.push(ySegment);
+
+      vertexData.push(xPos);
+      vertexData.push(yPos);
+      vertexData.push(zPos);
+    }
+  }
+
+  let firstIndex = 0;
+  let nextIndex = vertexCount;
+  let indexStp = 0;
+  let shouldProceed = true;
+  let indices: Array<number> = [];
+
+  while (shouldProceed) {
+    indices.push(firstIndex);
+    indices.push(nextIndex);
+    indexStp += 2;
+
+    shouldProceed = nextIndex != (vertexCount * vertexCount) - 1;
+
+    if (indexStp > 0 && (nextIndex+1) % vertexCount == 0 && shouldProceed) {
+      indices.push(nextIndex);
+      indices.push(firstIndex+1);
+      indexStp += 2;
+    }
+
+    firstIndex++;
+    nextIndex++;
+  }
+
+  return {
+    vertexData: new Float32Array(vertexData),
+    indices: new Uint16Array(indices)
+  };
+}
+
+export function cubeInterleavedPositionsNormals(): Float32Array {
+  return new Float32Array([
+    -1.0, -1.0,  1.0,  0, 0, 1,
+     1.0, -1.0,  1.0,  0, 0, 1,
+     1.0,  1.0,  1.0,  0, 0, 1,
+    -1.0,  1.0,  1.0,  0, 0, 1,
+
+    -1.0, -1.0, -1.0,  0, 0, -1,
+    -1.0,  1.0, -1.0,  0, 0, -1,
+     1.0,  1.0, -1.0,  0, 0, -1,
+     1.0, -1.0, -1.0,  0, 0, -1,
+    
+    -1.0,  1.0, -1.0,  0, 1, 0,
+    -1.0,  1.0,  1.0,  0, 1, 0,  
+     1.0,  1.0,  1.0,  0, 1, 0,
+     1.0,  1.0, -1.0,  0, 1, 0,
+  
+    -1.0, -1.0, -1.0,  0, -1, 0,
+     1.0, -1.0, -1.0,  0, -1, 0,
+     1.0, -1.0,  1.0,  0, -1, 0,
+    -1.0, -1.0,  1.0,  0, -1, 0,
+    
+     1.0, -1.0, -1.0,  1, 0, 0,
+     1.0,  1.0, -1.0,  1, 0, 0,
+     1.0,  1.0,  1.0,  1, 0, 0,
+     1.0, -1.0,  1.0,  1, 0, 0,
+    
+    -1.0, -1.0, -1.0,   -1, 0, 0,
+    -1.0, -1.0,  1.0,   -1, 0, 0,
+    -1.0,  1.0,  1.0,   -1, 0, 0,
+    -1.0,  1.0, -1.0,   -1, 0, 0,
   ]);
 }
 
@@ -184,6 +306,19 @@ export function drawAabb(gl: WebGLRenderingContext, prog: Program, model: mat4, 
   drawFunction(gl);
 }
 
+export function makeFollowCamera(gl: WebGLRenderingContext): FollowCamera {
+  const camera = new FollowCamera();
+
+  camera.followDistance = 10;
+  camera.rotate(Math.PI, Math.PI/6);
+  camera.setAspect(gl.canvas.clientWidth / gl.canvas.clientHeight);
+  camera.setNear(0.1);
+  camera.setFar(1000);
+  camera.setFieldOfView(45 * Math.PI/180);
+
+  return camera;
+}
+
 export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: types.Real3, sz: types.Real3 | number,
   color: types.Real3, drawFunction: types.DrawFunction): void {
   mat4.identity(model);
@@ -196,6 +331,45 @@ export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, po
   prog.setMat4('model', model);
   prog.setVec3('color', color);
   drawFunction(gl);
+}
+
+export function beginRender(gl: WebGLRenderingContext, camera: ICamera, dpr?: number): void {
+  gl.enable(gl.CULL_FACE);
+  gl.enable(gl.DEPTH_TEST);
+
+  if (gl.canvas.width !== gl.canvas.clientWidth || gl.canvas.height !== gl.canvas.clientHeight) {
+    dpr = dpr || window.devicePixelRatio || 1;
+    gl.canvas.width = gl.canvas.clientWidth * dpr;
+    gl.canvas.height = gl.canvas.clientHeight * dpr;
+    camera.setAspect(gl.canvas.clientWidth / gl.canvas.clientHeight);
+  }
+
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
+  gl.clearDepth(1.0);
+  gl.cullFace(gl.FRONT);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+}
+
+export function updateFollowCamera(dt: number, camera: FollowCamera, target: types.Real3, mouseState: DebugMouseState, keyboard: Keyboard) {
+  const dtFactor = Math.max(dt / (1/60), 1);
+
+  if (keyboard.isDown(Keys.leftShift)) {
+    camera.rotate(mouseState.x * 0.01, mouseState.y * 0.01);
+  }
+
+  mouseState.x *= (0.75 / dtFactor);
+  mouseState.y *= (0.75 / dtFactor);
+
+  if (Math.abs(mouseState.x) < math.EPSILON) {
+    mouseState.x = 0;
+  }
+
+  if (Math.abs(mouseState.y) < math.EPSILON) {
+    mouseState.y = 0;
+  }
+
+  camera.targetTo3(target[0], target[1], target[2]);
 }
 
 export function setViewProjection(prog: Program, view: mat4, proj: mat4): void {
@@ -295,29 +469,42 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
   });
 }
 
-function styleTouchElement(el: HTMLDivElement, offset: number, color: string) {
-  const sz = 50;
-  
+function styleTouchElement(el: HTMLDivElement, sz: number, offsetX: number, offsetY: number, color: string) {  
   el.style.width = `${sz}px`;
   el.style.height = `${sz}px`;
   el.style.position = 'fixed';
-  el.style.bottom = '0';
-  el.style.left = `${offset * sz}`;
+  el.style.bottom = `${offsetY * sz}px`;
+  el.style.left = `${offsetX * sz}`;
   el.style.backgroundColor = color;
 }
 
 export function createTouchMoveControls(keyboard: Keyboard) {
   const left = document.createElement('div');
   const right = document.createElement('div');
+  const down = document.createElement('div');
+  const up = document.createElement('div');
+  const sz = 50;
 
-  styleTouchElement(left, 0, 'red');
-  styleTouchElement(right, 1, 'blue');
+  styleTouchElement(left, sz, 0, 0, 'red');
+  styleTouchElement(right, sz, 1, 0, 'blue');
+  styleTouchElement(down, sz, 0, 1, 'green');
+  styleTouchElement(up, sz, 1, 1, 'yellow');
 
-  left.addEventListener('touchstart', _ => keyboard.markDown(Keys.w));
-  left.addEventListener('touchend', _ => keyboard.markUp(Keys.w));
-  right.addEventListener('touchstart', _ => keyboard.markDown(Keys.s));
-  right.addEventListener('touchend', _ => keyboard.markUp(Keys.s));
+  function addListener(element: HTMLDivElement, key: number) {
+    element.addEventListener('touchstart', e => {
+      e.preventDefault();
+      keyboard.markDown(key)
+    });
+    element.addEventListener('touchend', _ => keyboard.markUp(key));
+  }
+
+  addListener(left, Keys.a);
+  addListener(right, Keys.d);
+  addListener(down, Keys.w);
+  addListener(up, Keys.s);
   
   document.body.appendChild(left);
   document.body.appendChild(right);
+  document.body.appendChild(down);
+  document.body.appendChild(up);
 }
