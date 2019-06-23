@@ -9,6 +9,21 @@ export type AttributeDescriptor = {
   divisor?: number
 };
 
+export function makeAttribute(name: string, type: number, size: number, divisor?: number): AttributeDescriptor {
+  return {name, type, size, divisor};
+}
+
+export type VboDescriptor = {
+  name: string,
+  attributes: Array<AttributeDescriptor>,
+  data: PrimitiveTypedArray
+};
+
+export type EboDescriptor = {
+  name: string,
+  indices: Uint16Array
+};
+
 export class BufferDescriptor {
   private attributes: Array<AttributeDescriptor>;
 
@@ -142,6 +157,36 @@ export class Vao {
         this.ebos[eboName] = undefined;
       }
     }
+  }
+
+  static fromDescriptors(gl: WebGLRenderingContext, prog: Program, vboDescriptors: Array<VboDescriptor>, eboDescriptor?: EboDescriptor): Vao {
+    prog.use();
+
+    const vao = new Vao(gl);
+    vao.bind();
+
+    for (let i = 0; i < vboDescriptors.length; i++) {
+      const vboDescriptor = vboDescriptors[i];
+      const attributeDescriptors = vboDescriptor.attributes;
+      const vboName = vboDescriptor.name;
+      const vboData = vboDescriptor.data;
+
+      const bufferDescriptor = new BufferDescriptor();
+
+      for (let j = 0; j < attributeDescriptors.length; j++) {
+        bufferDescriptor.addAttribute(attributeDescriptors[j]);
+      }
+
+      bufferDescriptor.getAttributeLocations(prog);
+      vao.attachVbo(vboName, new Vbo(gl, bufferDescriptor, vboData));
+    }
+
+    if (eboDescriptor !== undefined) {
+      vao.attachEbo(eboDescriptor.name, new Ebo(gl, eboDescriptor.indices));
+    }
+
+    vao.unbind();
+    return vao;
   }
 }
 

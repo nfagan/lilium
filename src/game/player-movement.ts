@@ -26,7 +26,6 @@ export class PlayerMovement {
   private velocity: Array<number>;
   private isOnGround: boolean;
   private triedJump: boolean;
-  private readonly dtReference: number = 1/60;
   private readonly maxYVelocity: number = 2;
   private readonly jumpSpeed: number = 0.3;
   private readonly xzMovementSpeed: number = 0.15;
@@ -53,7 +52,7 @@ export class PlayerMovement {
   }
 
   private updateVelocity(dt: number, vel: Array<number>): void {
-    const dtSpeed = this.dtScale(dt, this.xzMovementSpeed);
+    const dtSpeed = math.dtSecScale(dt, this.xzMovementSpeed);
 
     const tmpYVelocity = vel[1];
     vel[1] = 0;
@@ -70,7 +69,7 @@ export class PlayerMovement {
   }
 
   private fall(dt: number): void {
-    const fallSpeed = this.dtScale(dt, this.fallSpeed);
+    const fallSpeed = math.dtSecScale(dt, this.fallSpeed);
     this.velocity[1] -= fallSpeed;
   }
 
@@ -141,11 +140,7 @@ export class PlayerMovement {
   
     //  If we fell too far, reset.
     if (playerAabb.minY < -20) {
-      playerAabb.moveTo3(2, 20, 2);
+      playerAabb.moveTo3(0, 20, 0);
     }
-  }
-
-  private dtScale(dt: number, value: number): number {
-    return value * dt / this.dtReference;
   }
 }

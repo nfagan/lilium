@@ -333,6 +333,16 @@ export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, po
   drawFunction(gl);
 }
 
+export function drawGroundPlane(gl: WebGLRenderingContext, prog: Program, model: mat4, scale: number, drawable: Drawable, color: types.Real3): void {
+  mat4.identity(model);
+  mat4.translate(model, model, [0, scale, 0]);
+  mat4.rotateX(model, model, Math.PI/2);
+  mat4.scale(model, model, [scale, scale, scale]);
+  prog.setMat4('model', model);
+  prog.setVec3('color', color);
+  drawable.drawFunction(gl);
+}
+
 export function beginRender(gl: WebGLRenderingContext, camera: ICamera, dpr?: number): void {
   gl.enable(gl.CULL_FACE);
   gl.enable(gl.DEPTH_TEST);
@@ -354,7 +364,12 @@ export function beginRender(gl: WebGLRenderingContext, camera: ICamera, dpr?: nu
 export function updateFollowCamera(dt: number, camera: FollowCamera, target: types.Real3, mouseState: DebugMouseState, keyboard: Keyboard) {
   const dtFactor = Math.max(dt / (1/60), 1);
 
-  if (keyboard.isDown(Keys.leftShift)) {
+  if (isNaN(mouseState.x) || isNaN(mouseState.y)) {
+    mouseState.x = 0;
+    mouseState.y = 0;
+  }
+
+  if (keyboard.isDown(Keys.leftShift) || mouseState.touchDown) {
     camera.rotate(mouseState.x * 0.01, mouseState.y * 0.01);
   }
 
@@ -398,7 +413,8 @@ export type DebugMouseState = {
   lastX: number, 
   lastY: number,
   clicked: boolean,
-  down: boolean
+  down: boolean,
+  touchDown: boolean
 };
 
 export function makeDebugMouseState(): DebugMouseState {
@@ -409,6 +425,7 @@ export function makeDebugMouseState(): DebugMouseState {
     lastY: null,
     clicked: false,
     down: false,
+    touchDown: false
   };
 }
 
@@ -437,13 +454,14 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
   document.body.addEventListener('touchstart', e => {
     e.preventDefault();
     mouseState.down = true;
+    mouseState.touchDown = true;
     if (e.touches.length > 0) {
       mouseState.lastX = e.touches[0].clientX;
       mouseState.lastY = e.touches[0].clientY;
     }
   });
   document.body.addEventListener('touchmove', e => {
-    if (e.touches.length === 1) {
+    if (e.touches.length > 0) {
       if (mouseState.lastX === null) {
         mouseState.lastX = e.touches[0].clientX;
         mouseState.lastY = e.touches[0].clientY;
@@ -458,6 +476,9 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
     mouseState.lastY = null;
     mouseState.lastX = null;
     mouseState.down = false;
+    mouseState.touchDown = false;
+    mouseState.x = 0;
+    mouseState.y = 0;
   });
   document.body.addEventListener('mousedown', e => mouseState.down = true);
   document.body.addEventListener('mouseup', e => mouseState.down = false);
@@ -469,13 +490,28 @@ export function setupDocumentBody(mouseState: DebugMouseState): void {
   });
 }
 
-function styleTouchElement(el: HTMLDivElement, sz: number, offsetX: number, offsetY: number, color: string) {  
+function styleTouchElement(el: HTMLDivElement, sz: number, offsetX: number, offsetY: number, color: string, rightJustify?: boolean) {  
   el.style.width = `${sz}px`;
   el.style.height = `${sz}px`;
   el.style.position = 'fixed';
   el.style.bottom = `${offsetY * sz}px`;
-  el.style.left = `${offsetX * sz}`;
   el.style.backgroundColor = color;
+  el.style.opacity = '0.25';
+
+  if (rightJustify) {
+    el.style.left = `${window.innerWidth - sz}px`;
+  } else {
+    el.style.left = `${offsetX * sz}`;
+  }
+}
+
+function addTouchElementEventListener(element: HTMLDivElement, keyboard: Keyboard, key: number): void {
+  element.addEventListener('touchstart', e => {
+    e.preventDefault();
+    keyboard.markDown(key);
+  });
+  element.addEventListener('touchend', _ => keyboard.markUp(key));
+  element.addEventListener('touchcancel', _ => keyboard.markUp(key));
 }
 
 export function createTouchMoveControls(keyboard: Keyboard) {
@@ -483,28 +519,24 @@ export function createTouchMoveControls(keyboard: Keyboard) {
   const right = document.createElement('div');
   const down = document.createElement('div');
   const up = document.createElement('div');
+  const jump = document.createElement('div');
   const sz = 50;
 
-  styleTouchElement(left, sz, 0, 0, 'red');
-  styleTouchElement(right, sz, 1, 0, 'blue');
-  styleTouchElement(down, sz, 0, 1, 'green');
-  styleTouchElement(up, sz, 1, 1, 'yellow');
+  styleTouchElement(left, sz, 0, 1, 'red');
+  styleTouchElement(right, sz, 1, 1, 'blue');
+  styleTouchElement(down, sz, 0.5, 0, 'green');
+  styleTouchElement(up, sz, 0.5, 2, 'yellow');
+  styleTouchElement(jump, sz, 0, 0, 'yellow', true);
 
-  function addListener(element: HTMLDivElement, key: number) {
-    element.addEventListener('touchstart', e => {
-      e.preventDefault();
-      keyboard.markDown(key)
-    });
-    element.addEventListener('touchend', _ => keyboard.markUp(key));
-  }
-
-  addListener(left, Keys.a);
-  addListener(right, Keys.d);
-  addListener(down, Keys.w);
-  addListener(up, Keys.s);
+  addTouchElementEventListener(left, keyboard, Keys.a);
+  addTouchElementEventListener(right, keyboard, Keys.d);
+  addTouchElementEventListener(down, keyboard, Keys.s);
+  addTouchElementEventListener(up, keyboard, Keys.w);
+  addTouchElementEventListener(jump, keyboard, Keys.space);
   
   document.body.appendChild(left);
   document.body.appendChild(right);
   document.body.appendChild(down);
   document.body.appendChild(up);
+  document.body.appendChild(jump);
 }

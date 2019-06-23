@@ -1,12 +1,12 @@
-import { debug, Keyboard, Keys, Program, FollowCamera, Vao, Vbo, 
-  BufferDescriptor, Ebo, VoxelGrid, collision, MousePicker, math, types, Texture2D } from '../src/gl';
-import { Result, Stopwatch, loadAudioBuffer, loadImage } from '../src/util';
-import { mat4, vec3, glMatrix } from 'gl-matrix';
+import { debug, Keyboard, Keys, Program, FollowCamera, Vao, VoxelGrid, collision, MousePicker, math, types, 
+  Texture2D, parse, makeAttribute, VboDescriptor } from '../src/gl';
+import { Result, Stopwatch, loadAudioBuffer, loadImage, loadText, asyncTimeout } from '../src/util';
+import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
 import * as grassSources from './shaders/debug-grass2';
 import * as voxelGridSources from './shaders/voxel-grid-lighting';
 import * as skySources from './shaders/debug-sky';
-import { PlayerMovement, Player, GrassTextureManager, GrassTile } from '../src/game';
+import { PlayerMovement, Player, GrassTextureManager, GrassTile, makeGrassTileData } from '../src/game';
 
 const MOUSE_STATE = debug.makeDebugMouseState();
 const KEYBOARD = new Keyboard();
@@ -26,7 +26,8 @@ type Drawables = {
   cube: Drawable,
   instancedCube: InstancedDrawable,
   grassQuad: Drawable,
-  skySphere: Drawable
+  skySphere: Drawable,
+  tree: Drawable
 };
 
 type Textures = {
@@ -58,9 +59,10 @@ type VoxelGridInfo = {
   lastColor: Array<number>
 };
 
-enum VoxelManipulationStates {
-  selecting,
-  creating
+const enum VoxelManipulationStates {
+  Selecting,
+  Creating,
+  Deleting
 }
 
 type GameState = {
@@ -72,7 +74,7 @@ type GameState = {
 };
 
 const GAME_STATE: GameState = {
-  voxelManipulationState: VoxelManipulationStates.selecting,
+  voxelManipulationState: VoxelManipulationStates.Selecting,
   voxelClicked: false,
   playerJumped: false,
   frameTimer: new Stopwatch(),
@@ -98,72 +100,44 @@ function createSimpleProgram(gl: WebGLRenderingContext): Result<Program, string>
   return debug.tryCreateProgramFromSources(gl, simpleSources.vertex, simpleSources.fragment);
 }
 
-function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
-  return loadAudioBuffer(audioContext, '/sound/lf_noise_short.m4a');
+async function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
+  const soundUrl = '/sound/lf_noise_short.m4a';
+  const buffer = await asyncTimeout(() => loadAudioBuffer(audioContext, soundUrl), 1000);
+  return buffer;
+}
+
+async function loadModels(): Promise<parse.Obj> {
+  const url = '/model/tree2.obj';
+  const src = await asyncTimeout(() => loadText(url), 1000);
+  return new parse.Obj(src);
 }
 
 async function makeSounds(audioContext: AudioContext): Promise<Sounds> {
   const wind = await loadWindSound(audioContext);
-  return {
-    wind
-  };
+  return {wind};
 }
 
 function makeGrassQuad(gl: WebGLRenderingContext, prog: Program, grassTileInfo: GrassTile): Drawable {
   const numSegments = 8;
-  const grassDim = grassTileInfo.dimension;
-  const grassDensity = grassTileInfo.density;
-
   const positions = debug.segmentedQuadPositions(numSegments);
-
-  const posDescriptor = new BufferDescriptor();
-  posDescriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT});
-  posDescriptor.getAttributeLocations(prog);
-
-  const translationDescriptor = new BufferDescriptor();
-  translationDescriptor.addAttribute({name: 'a_translation', size: 3, type: gl.FLOAT, divisor: 1});
-  translationDescriptor.getAttributeLocations(prog);
-
-  const rotationDescriptor = new BufferDescriptor();
-  rotationDescriptor.addAttribute({name: 'a_rotation', size: 1, type: gl.FLOAT, divisor: 1});
-  rotationDescriptor.getAttributeLocations(prog);
-
-  const uvDescriptor = new BufferDescriptor();
-  uvDescriptor.addAttribute({name: 'a_uv', size: 2, type: gl.FLOAT, divisor: 1});
-  uvDescriptor.getAttributeLocations(prog);
 
   const translations: Array<number> = [];
   const rotations: Array<number> = [];
   const uvs: Array<number> = [];
 
-  const maxDim = grassDim * grassDensity;
+  makeGrassTileData(grassTileInfo, translations, rotations, uvs);
 
-  for (let i = 0; i < grassDim; i++) {
-    for (let j = 0; j < grassDim; j++) {
-      const xPos = grassDim * Math.random() * grassDensity;
-      const zPos = grassDim * Math.random() * grassDensity;
+  const vboDescriptors: Array<VboDescriptor> = [
+    {name: 'position', attributes: [makeAttribute('a_position', gl.FLOAT, 3)], data: positions},
+    {name: 'translation', attributes: [makeAttribute('a_translation', gl.FLOAT, 3, 1)], data: new Float32Array(translations)},
+    {name: 'rotation', attributes: [makeAttribute('a_rotation', gl.FLOAT, 1, 1)], data: new Float32Array(rotations)},
+    {name: 'uv', attributes: [makeAttribute('a_uv', gl.FLOAT, 2, 1)], data: new Float32Array(uvs)}
+  ];
 
-      translations.push(xPos);
-      translations.push(0);
-      translations.push(zPos);
-
-      rotations.push(Math.random() * Math.PI * 2);
-
-      uvs.push(xPos / maxDim);
-      uvs.push(zPos / maxDim);
-    }
-  }
+  const vao = Vao.fromDescriptors(gl, prog, vboDescriptors);
   
-  const vao = new Vao(gl);
   const numVerts = positions.length/3;
   const numInstances = translations.length/3;
-
-  vao.bind();
-  vao.attachVbo('position', new Vbo(gl, posDescriptor, positions));
-  vao.attachVbo('translation', new Vbo(gl, translationDescriptor, new Float32Array(translations)));
-  vao.attachVbo('rotation', new Vbo(gl, rotationDescriptor, new Float32Array(rotations)));
-  vao.attachVbo('uv', new Vbo(gl, uvDescriptor, new Float32Array(uvs)));
-  vao.unbind();
 
   return {
     vao,
@@ -171,24 +145,23 @@ function makeGrassQuad(gl: WebGLRenderingContext, prog: Program, grassTileInfo: 
       const ext = gl.getExtension('ANGLE_instanced_arrays');
       ext.drawArraysInstancedANGLE(gl.TRIANGLES, 0, numVerts, numInstances);
     },
-    isInstanced: false
+    isInstanced: true,
+    numActiveInstances: numInstances
   };
 }
 
 function makeDrawable(gl: WebGLRenderingContext, prog: Program, 
   positions: Float32Array, indices: Uint16Array, numTriangles: number): Drawable {
-  prog.use();
+  
+  const vboDescriptors = [{
+    name: 'position',
+    attributes: [makeAttribute('a_position', gl.FLOAT, 3)],
+    data: positions
+  }];
 
-  const descriptor = new BufferDescriptor();
-  descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT});
-  descriptor.getAttributeLocations(prog);
+  const eboDescriptor = {name: 'indices', indices};
 
-  const vao = new Vao(gl);
-
-  vao.bind();
-  vao.attachVbo('position', new Vbo(gl, descriptor, positions));
-  vao.attachEbo('indices', new Ebo(gl, indices));
-  vao.unbind();
+  const vao = Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
 
   return {
     vao,
@@ -198,21 +171,20 @@ function makeDrawable(gl: WebGLRenderingContext, prog: Program,
 }
 
 function makeSkySphere(gl: WebGLRenderingContext, prog: Program, data: Float32Array, indices: Uint16Array): Drawable {
-  prog.use();
+  const vboDescriptors = [{
+    name: 'data',
+    attributes: [
+      makeAttribute('a_position', gl.FLOAT, 3), 
+      makeAttribute('a_uv', gl.FLOAT, 2),
+      makeAttribute('a_normal', gl.FLOAT, 3)
+    ],
+    data
+  }];
 
-  const descriptor = new BufferDescriptor();
-  descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT});
-  descriptor.addAttribute({name: 'a_uv', size: 2, type: gl.FLOAT});
-  descriptor.addAttribute({name: 'a_normal', size: 3, type: gl.FLOAT});
-  descriptor.getAttributeLocations(prog);
+  const eboDescriptor = {name: 'indices', indices};
 
+  const vao = Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
   const numTris = indices.length;
-
-  const vao = new Vao(gl);
-  vao.bind();
-  vao.attachVbo('data', new Vbo(gl, descriptor, data));
-  vao.attachEbo('indices', new Ebo(gl, indices));
-  vao.unbind();
 
   return {
     vao,
@@ -223,31 +195,25 @@ function makeSkySphere(gl: WebGLRenderingContext, prog: Program, data: Float32Ar
 
 function makeInstancedDrawable(gl: WebGLRenderingContext, prog: Program, positions: Float32Array, 
   indices: Uint16Array, numTriangles: number, maxNumInstances: number): InstancedDrawable {
-  prog.use();
-  
-  const descriptor = new BufferDescriptor();
-  descriptor.addAttribute({name: 'a_position', size: 3, type: gl.FLOAT, divisor: 0});
-  descriptor.addAttribute({name: 'a_normal', size: 3, type: gl.FLOAT, divisor: 0});
-  descriptor.getAttributeLocations(prog);
+  const emptyFloatArray = new Float32Array(maxNumInstances * 3); //  * (x, y, z) or (r, g, b)
 
-  const colorDescriptor = new BufferDescriptor();
-  colorDescriptor.addAttribute({name: 'a_color', size: 3, type: gl.FLOAT, divisor: 1});
-  colorDescriptor.getAttributeLocations(prog);
+  const vboDescriptors = [{
+    name: 'position',
+    attributes: [makeAttribute('a_position', gl.FLOAT, 3, 0), makeAttribute('a_normal', gl.FLOAT, 3, 0)],
+    data: positions
+  },{
+    name: 'color',
+    attributes: [makeAttribute('a_color', gl.FLOAT, 3, 1)],
+    data: emptyFloatArray
+  },{
+    name: 'translation',
+    attributes: [makeAttribute('a_translation', gl.FLOAT, 3, 1)],
+    data: emptyFloatArray
+  }];
 
-  const transDescriptor = new BufferDescriptor();
-  transDescriptor.addAttribute({name: 'a_translation', size: 3, type: gl.FLOAT, divisor: 1});
-  transDescriptor.getAttributeLocations(prog);
+  const eboDescriptor = {name: 'indices', indices};
 
-  const emptyFloat3Array = new Float32Array(maxNumInstances * 3); //  * (x, y, z) or (r, g, b)
-
-  const vao = new Vao(gl);
-
-  vao.bind();
-  vao.attachVbo('position', new Vbo(gl, descriptor, positions));
-  vao.attachVbo('color', new Vbo(gl, colorDescriptor, emptyFloat3Array));
-  vao.attachVbo('translation', new Vbo(gl, transDescriptor, emptyFloat3Array));
-  vao.attachEbo('indices', new Ebo(gl, indices));
-  vao.unbind();
+  const vao = Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
 
   const drawable: InstancedDrawable = {
     vao: vao,
@@ -275,7 +241,7 @@ function makeInstancedDrawable(gl: WebGLRenderingContext, prog: Program, positio
   return drawable;
 }
 
-function makeDrawables(gl: WebGLRenderingContext, programs: Programs, maxNumInstances: number, grassTileInfo: GrassTile): Result<Drawables, string> {
+function makeDrawables(gl: WebGLRenderingContext, programs: Programs, maxNumInstances: number, grassTileInfo: GrassTile, treeObj: parse.Obj): Result<Drawables, string> {
   const cubePos = debug.cubePositions();
   const cubeInds = debug.cubeIndices();
   const cubeInterleavedData = debug.cubeInterleavedPositionsNormals();
@@ -292,11 +258,19 @@ function makeDrawables(gl: WebGLRenderingContext, programs: Programs, maxNumInst
     const instancedCube = makeInstancedDrawable(gl, instancedProg, cubeInterleavedData, cubeInds, 36, maxNumInstances);
     const grassQuad = makeGrassQuad(gl, grassProg, grassTileInfo);
     const skySphere = makeSkySphere(gl, skyProg, sphereData.vertexData, sphereData.indices);
+    const tree = makeDrawableFromObj(gl, prog, treeObj);
 
-    return Result.Ok({cube, quad, instancedCube, grassQuad, skySphere});
+    return Result.Ok({cube, quad, instancedCube, grassQuad, skySphere, tree});
   } catch (err) {
     return Result.Err(err.message);
   }
+}
+
+function makeDrawableFromObj(gl: WebGLRenderingContext, prog: Program, obj: parse.Obj): Drawable {
+  const pos = new Float32Array(obj.positions);
+  const inds = new Uint16Array(obj.positionIndices);
+
+  return makeDrawable(gl, prog, pos, inds, inds.length);
 }
 
 function makeGrassTextures(gl: WebGLRenderingContext, windSound: AudioBufferSourceNode, yCellDim: number): GrassTextureManager {
@@ -317,7 +291,7 @@ function makeGrassTextures(gl: WebGLRenderingContext, windSound: AudioBufferSour
 }
 
 async function makeSkyTexture(gl: WebGLRenderingContext): Promise<Texture2D> {
-  const img = await loadImage('/texture/sky3.png');
+  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 10);
   const tex = new Texture2D(gl);
 
   tex.minFilter = gl.LINEAR;
@@ -438,7 +412,9 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
     skyColor: await makeSkyTexture(gl)
   };
 
-  const drawableRes = makeDrawables(gl, programs, maxNumInstances, grassTextures.grassTileInfo);
+  const treeObj = await loadModels();
+
+  const drawableRes = makeDrawables(gl, programs, maxNumInstances, grassTextures.grassTileInfo, treeObj);
   if (debug.checkError(drawableRes)) {
     return;
   }
@@ -526,6 +502,11 @@ function drawInstancedVoxelGrid(gl: WebGLRenderingContext, programs: Programs, c
 function drawSun(gl: WebGLRenderingContext, prog: Program, drawable: Drawable, sun: Sun): void {
   drawable.vao.bind();
   debug.drawAt(gl, prog, mat4.create(), sun.position, 1.0, sun.color, drawable.drawFunction);
+}
+
+function drawTree(gl: WebGLRenderingContext, prog: Program, tree: Drawable): void {
+  tree.vao.bind();
+  debug.drawAt(gl, prog, mat4.create(), [10, 0.5, 10], 0.5, [0, 0.5, 1], tree.drawFunction);
 }
 
 function drawSky(gl: WebGLRenderingContext, prog: Program, skySphere: Drawable, 
@@ -739,7 +720,7 @@ function handleVoxelSelection(voxelGridInfo: VoxelGridInfo, gl: WebGLRenderingCo
   }
 
   if (GAME_STATE.voxelClicked) {
-    GAME_STATE.voxelManipulationState = VoxelManipulationStates.creating;
+    GAME_STATE.voxelManipulationState = VoxelManipulationStates.Creating;
   }
 }
 
@@ -802,7 +783,7 @@ function handleVoxelAddition(voxelGridInfo: VoxelGridInfo, playerAabb: math.Aabb
 
   if (anyMarked) {
     addVoxelCell(voxelGridInfo, inds, playerAabb);
-    GAME_STATE.voxelManipulationState = VoxelManipulationStates.selecting;
+    GAME_STATE.voxelManipulationState = VoxelManipulationStates.Selecting;
     KEYBOARD.markUp(markedKey);
   }
 }
@@ -870,6 +851,11 @@ function updateVoxelInstances(gl: WebGLRenderingContext, voxelGridInfo: VoxelGri
 }
 
 function updatePlayerPosition(dt: number, playerAabb: math.Aabb, playerMovement: PlayerMovement, camera: FollowCamera): void {
+  if (KEYBOARD.isDown(Keys.space)) {
+    GAME_STATE.playerJumped = true;
+    KEYBOARD.markUp(Keys.space);
+  }
+
   const front = camera.getFront(vec3.create());
   const right = camera.getRight(vec3.create());
   
@@ -900,13 +886,13 @@ function updateCamera(dt: number, camera: FollowCamera, playerAabb: math.Aabb) {
 function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: FollowCamera, 
   player: Player, playerMovement: PlayerMovement, drawables: Drawables, voxelGridInfo: VoxelGridInfo, textures: Textures): void {
   const frameTimer = GAME_STATE.frameTimer;
-  const dt = frameTimer.elapsedSecs();
+  const dt = Math.max(frameTimer.elapsedSecs(), 1/60);
   const sun = GAME_STATE.sun;
   const grassTextures = textures.grassTextureManager;
 
   debug.beginRender(gl, camera, 1);
 
-  if (GAME_STATE.voxelManipulationState !== VoxelManipulationStates.creating) {
+  if (GAME_STATE.voxelManipulationState !== VoxelManipulationStates.Creating) {
     updatePlayerPosition(dt, player.aabb, playerMovement, camera);
     updateCamera(dt, camera, player.aabb);
   }
@@ -918,10 +904,10 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   const proj = camera.makeProjectionMatrix();
 
   switch (GAME_STATE.voxelManipulationState) {
-    case VoxelManipulationStates.selecting:
+    case VoxelManipulationStates.Selecting:
       handleVoxelSelection(voxelGridInfo, gl, camera, view, proj);
       break;
-    case VoxelManipulationStates.creating:
+    case VoxelManipulationStates.Creating:
       handleVoxelAddition(voxelGridInfo, player.aabb, camera.getFront(vec3.create()));
       break;
   }
@@ -932,6 +918,7 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   debug.drawAabb(gl, simpleProg, mat4.create(), player.aabb, [0, 0, 1], drawables.cube.drawFunction);
 
   drawSun(gl, simpleProg, drawables.cube, sun);
+  // drawTree(gl, simpleProg, drawables.tree);
 
   updateVoxelInstances(gl, voxelGridInfo, drawables.instancedCube);
   drawInstancedVoxelGrid(gl, programs, camera, drawables, sun, voxelGridInfo, view, proj);
@@ -953,7 +940,7 @@ function initializeGameStateListeners(gl: WebGLRenderingContext) {
   gl.canvas.addEventListener('click', () => {
     GAME_STATE.voxelClicked = true;
   });
-  KEYBOARD.addListener(Keys.space, 'playerJump', () => GAME_STATE.playerJumped = true);
+  // KEYBOARD.addListener(Keys.space, 'playerJump', () => GAME_STATE.playerJumped = true);
 }
 
 export function main() {

@@ -33,7 +33,7 @@ export class GrassTextureManager {
     this.offsetX = 0;
     this.offsetY = 0;
     this.offsetZ = 0;
-    this.windVx = 0.05;
+    this.windVx = 0.2;
     this.windVz = 0.05;
     this.decayAmount = 1.1;
     this.grassBladeHeight = bladeHeight;
@@ -148,16 +148,52 @@ export class GrassTextureManager {
   }
 }
 
+export function makeGrassTileData(grassTileInfo: GrassTile, translations: Array<number>, rotations: Array<number>, uvs: Array<number>): void {
+  const grassDim = grassTileInfo.dimension;
+  const grassDensity = grassTileInfo.density;
+
+  const maxDim = grassDim * grassDensity;
+
+  for (let i = 0; i < grassDim; i++) {
+    for (let j = 0; j < grassDim; j++) {
+      const xAmt = Math.random();
+      const yAmt = Math.random();
+
+      const xPos = grassDim * xAmt * grassDensity;
+      const zPos = grassDim * yAmt * grassDensity;
+
+      translations.push(xPos);
+      translations.push(0);
+      translations.push(zPos);
+
+      rotations.push(Math.random() * Math.PI * 2);
+
+      uvs.push(xPos / maxDim);
+      uvs.push(zPos / maxDim);
+    }
+  }
+}
+
 function makeWindAudioSamplers(numSamplers: number, bufferSource: AudioBufferSourceNode): Array<NumberSampler> {
+  //  https://blog.demofox.org/2017/05/29/when-random-numbers-are-too-random-low-discrepancy-sequences/
+
   const buffer = bufferSource.buffer;
   const channelData = buffer.getChannelData(0);
   const samplers: Array<NumberSampler> = [];
   
   math.normalize01(channelData, channelData);
+
+  const gr = math.goldenRatio();
+  let value = Math.random();
   
   for (let i = 0; i < numSamplers; i++) {
     const sampler = new NumberSampler(channelData);
-    sampler.seek(0.4 + i/numSamplers/2);
+    // sampler.seek(0.4 + i/numSamplers/2);
+    // sampler.seek(Math.random());
+    value += gr;
+    value %= 1.0;
+
+    sampler.seek(value);
     samplers.push(sampler);
   }
 

@@ -1,3 +1,23 @@
+export function asyncTimeout<T>(func: () => Promise<T>, milliseconds: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let responded = false;
+
+    func().then(v => {
+      if (!responded) {
+        responded = true;
+        resolve(v);
+      }
+    });
+
+    setTimeout(() => {
+      if (!responded) {
+        responded = true;
+        reject(new Error(`Failed to resolve promise in ${milliseconds} ms.`));
+      }
+    }, milliseconds);
+  });
+}
+
 export class Stopwatch {
   private startTime: number;
 

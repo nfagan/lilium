@@ -21,6 +21,10 @@ export function clamp<T>(v: T, minBound: T, maxBound: T): T {
   }
 }
 
+export function goldenRatio(): number {
+  return (1 + Math.sqrt(5)) / 2;
+}
+
 export function clamp01(v: number): number {
   return clamp<number>(v, 0, 1);
 }
@@ -214,7 +218,14 @@ export class Aabb {
     this.maxX = x + w;
     this.maxY = y + h;
     this.maxZ = z + d;
-  }  
+  }
+
+  moveToY(y: number): void {
+    const h = this.height();
+
+    this.minY = y;
+    this.maxY = y + h;
+  }
 
   assign(aabb: Aabb): void {
     this.minX = aabb.minX;
