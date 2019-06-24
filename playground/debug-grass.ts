@@ -782,7 +782,7 @@ export function main() {
   const audioContext = new (window.AudioContext || (<any>window).webkitAudioContext)();
 
   debug.setupDocumentBody(MOUSE_STATE);
-  debug.createTouchMoveControls(KEYBOARD);
+  debug.createTouchControls(KEYBOARD);
   
   render(gl, audioContext);
 }

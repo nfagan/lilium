@@ -1,4 +1,4 @@
-import { Result } from '../../util';
+import { Result, NumberSampler } from '../../util';
 import { types, Program, math, Keyboard, Keys, Vao, ICamera, FollowCamera } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
@@ -343,11 +343,11 @@ export function drawGroundPlane(gl: WebGLRenderingContext, prog: Program, model:
   drawable.drawFunction(gl);
 }
 
-export function beginRender(gl: WebGLRenderingContext, camera: ICamera, dpr?: number): void {
+export function beginRender(gl: WebGLRenderingContext, camera: ICamera, dpr?: number, forceUpdate: boolean = false): void {
   gl.enable(gl.CULL_FACE);
   gl.enable(gl.DEPTH_TEST);
 
-  if (gl.canvas.width !== gl.canvas.clientWidth || gl.canvas.height !== gl.canvas.clientHeight) {
+  if (forceUpdate || gl.canvas.width !== gl.canvas.clientWidth || gl.canvas.height !== gl.canvas.clientHeight) {
     dpr = dpr || window.devicePixelRatio || 1;
     gl.canvas.width = gl.canvas.clientWidth * dpr;
     gl.canvas.height = gl.canvas.clientHeight * dpr;
@@ -514,12 +514,14 @@ function addTouchElementEventListener(element: HTMLDivElement, keyboard: Keyboar
   element.addEventListener('touchcancel', _ => keyboard.markUp(key));
 }
 
-export function createTouchMoveControls(keyboard: Keyboard) {
+export function createTouchControls(keyboard: Keyboard) {
   const left = document.createElement('div');
   const right = document.createElement('div');
   const down = document.createElement('div');
   const up = document.createElement('div');
   const jump = document.createElement('div');
+  const toggleQuality = document.createElement('div');
+
   const sz = 50;
 
   styleTouchElement(left, sz, 0, 1, 'red');
@@ -527,16 +529,43 @@ export function createTouchMoveControls(keyboard: Keyboard) {
   styleTouchElement(down, sz, 0.5, 0, 'green');
   styleTouchElement(up, sz, 0.5, 2, 'yellow');
   styleTouchElement(jump, sz, 0, 0, 'yellow', true);
+  styleTouchElement(toggleQuality, sz, 0, 1, 'red', true);
 
   addTouchElementEventListener(left, keyboard, Keys.a);
   addTouchElementEventListener(right, keyboard, Keys.d);
   addTouchElementEventListener(down, keyboard, Keys.s);
   addTouchElementEventListener(up, keyboard, Keys.w);
   addTouchElementEventListener(jump, keyboard, Keys.space);
+  addTouchElementEventListener(toggleQuality, keyboard, Keys.k);
   
   document.body.appendChild(left);
   document.body.appendChild(right);
   document.body.appendChild(down);
   document.body.appendChild(up);
   document.body.appendChild(jump);
+  document.body.appendChild(toggleQuality);
+}
+
+
+export function makeAudioBufferSamplers(numSamplers: number, bufferSource: AudioBufferSourceNode): Array<NumberSampler> {
+  //  https://blog.demofox.org/2017/05/29/when-random-numbers-are-too-random-low-discrepancy-sequences/
+  const buffer = bufferSource.buffer;
+  const channelData = buffer.getChannelData(0);
+  const samplers: Array<NumberSampler> = [];
+  
+  math.normalize01(channelData, channelData);
+
+  const gr = math.goldenRatio();
+  let value = Math.random();
+  
+  for (let i = 0; i < numSamplers; i++) {
+    const sampler = new NumberSampler(channelData);
+    value += gr;
+    value %= 1.0;
+
+    sampler.seek(value);
+    samplers.push(sampler);
+  }
+
+  return samplers;
 }

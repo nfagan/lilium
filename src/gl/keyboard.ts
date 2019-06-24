@@ -5,6 +5,7 @@ export const Keys = {
   d: 68,
   q: 81,
   z: 90,
+  k: 75,
   space: 32,
   leftShift: 16,
   left: 37,

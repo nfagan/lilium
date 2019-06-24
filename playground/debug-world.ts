@@ -730,7 +730,7 @@ export function main() {
 
   debug.setupDocumentBody(MOUSE_STATE);
 
-  debug.createTouchMoveControls(KEYBOARD);
+  debug.createTouchControls(KEYBOARD);
   initializeGameStateListeners(gl);
   render(gl);
 }

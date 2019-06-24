@@ -1,5 +1,5 @@
 import { Texture2D, math } from '../gl';
-import { NumberSampler } from '../audio/audio-sampler';
+import { NumberSampler } from '../util';
 
 export type GrassTile = {
   density: number,

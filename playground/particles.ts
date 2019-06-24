@@ -1,17 +1,11 @@
-import { debug, Keyboard, Keys, Program, FollowCamera, Vao, math, makeAttribute, ICamera, types, Texture2D } from '../src/gl';
+import { debug, Program, Vao, math, makeAttribute, ICamera, types, Texture2D } from '../src/gl';
 import { Result, NumberSampler, asyncTimeout, loadAudioBuffer, loadImage } from '../src/util';
-import { mat4, vec3 } from 'gl-matrix';
-import * as simpleSources from './shaders/debug-simple';
+import { mat4 } from 'gl-matrix';
 import * as particleSources from './shaders/debug-particles';
-
-const MOUSE_STATE = debug.makeDebugMouseState();
-const KEYBOARD = new Keyboard();
 
 type Drawable = debug.Drawable;
 
 type Drawables = {
-  quad: Drawable,
-  cube: Drawable,
   particles: Drawable
 };
 
@@ -24,7 +18,6 @@ type Textures = {
 };
 
 type Programs = {
-  simple: Program,
   particles: Program
 };
 
@@ -46,9 +39,9 @@ type Particles = {
   noiseSamplers: Array<NumberSampler>
 };
 
-function createSimpleProgram(gl: WebGLRenderingContext): Result<Program, string> {
-  return debug.tryCreateProgramFromSources(gl, simpleSources.vertex, simpleSources.fragment);
-}
+let PROGRAMS: Programs = null;
+let PARTICLES: Particles = null;
+let TEXTURES: Textures = null;
 
 function createParticleProgram(gl: WebGLRenderingContext): Result<Program, string> {
   return debug.tryCreateProgramFromSources(gl, particleSources.vertex, particleSources.fragment);
@@ -77,8 +70,8 @@ async function makeParticleTexture(gl: WebGLRenderingContext): Promise<Texture2D
 
 function makeParticles(gl: WebGLRenderingContext, prog: Program, positions: Float32Array, indices: Uint16Array, noiseSource: AudioBufferSourceNode): Particles {
   const xzScale = 10;
-  const numParticles = 500;
-  const particleScale = 0.01;
+  const numParticles = 1000;
+  const particleScale = 0.005;
 
   const translations: Array<number> = [];
   const rotations: Array<number> = [];
@@ -87,7 +80,7 @@ function makeParticles(gl: WebGLRenderingContext, prog: Program, positions: Floa
 
   for (let i = 0; i < numParticles; i++) {
     translations.push(Math.random() * xzScale - xzScale/2);
-    translations.push(Math.random() * 4 + 1);
+    translations.push(Math.random() * 4 + 2);
     translations.push(Math.random() * xzScale - xzScale);
 
     rotations.push(Math.random() * Math.PI * 2);
@@ -139,36 +132,15 @@ function makeParticles(gl: WebGLRenderingContext, prog: Program, positions: Floa
   }
 }
 
-function makeDrawable(gl: WebGLRenderingContext, prog: Program, positions: Float32Array, indices: Uint16Array): Drawable {
-  const vboDescriptors = [{
-    name: 'position',
-    attributes: [makeAttribute('a_position', gl.FLOAT, 3)],
-    data: positions
-  }];
-
-  const eboDescriptor = {name: 'indices', indices};
-  const vao = Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
-
-  return {
-    vao,
-    drawFunction: gl => gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0),
-    isInstanced: false
-  };
-}
-
 function makeDrawables(gl: WebGLRenderingContext, programs: Programs, sounds: Sounds): Result<[Drawables, Particles], string> {
-  const cubePos = debug.cubePositions();
-  const cubeInds = debug.cubeIndices();
   const quadPositions = debug.quadPositions();
   const quadIndices = debug.quadIndices();
 
   try {
-    const cube = makeDrawable(gl, programs.simple, cubePos, cubeInds);
-    const quad = makeDrawable(gl, programs.simple, quadPositions, quadIndices);
     const particles = makeParticles(gl, programs.particles, quadPositions, quadIndices, sounds.noise);
     const drawableParticle = particles.drawable;
 
-    return Result.Ok([{cube, quad, particles: drawableParticle}, particles]);
+    return Result.Ok([{particles: drawableParticle}, particles]);
   } catch (err) {
     return Result.Err(err.message);
   }
@@ -180,92 +152,10 @@ async function makeTextures(gl: WebGLRenderingContext): Promise<Textures> {
 }
 
 async function makeSounds(ac: AudioContext): Promise<Sounds> {
-  // const noiseUrl = '/sound/lf_noise_short.m4a';
+  // const noiseUrl = '/sound/wind-a.m4a';
   const noiseUrl = '/sound/wind-a-short2.aac';
   const noiseSound = await asyncTimeout(() => loadAudioBuffer(ac, noiseUrl), 1000);
   return {noise: noiseSound};
-}
-
-async function render(gl: WebGLRenderingContext, ac: AudioContext) {
-  const camera = debug.makeFollowCamera(gl);
-  camera.maxPolar = Math.PI;
-
-  const simpleProgResult = createSimpleProgram(gl);
-  const particleProgResult = createParticleProgram(gl);
-
-  if (debug.checkError(simpleProgResult) ||
-      debug.checkError(particleProgResult)) {
-    return;
-  }
-
-  const playerDims = [1.01, 1.01, 1.01];
-  const playerAabb = math.Aabb.fromOriginDimensions([0, 0, 0], playerDims);
-
-  const programs: Programs = {
-    simple: simpleProgResult.unwrap(),
-    particles: particleProgResult.unwrap()
-  };
-
-  const sounds: Sounds = await makeSounds(ac);
-  const textures: Textures = await makeTextures(gl);
-
-  const drawableRes = makeDrawables(gl, programs, sounds);
-  if (debug.checkError(drawableRes)) {
-    return;
-  }
-
-  const sun: Sun = {
-    position: [0, 10, 0],
-    color: [1, 1, 1]
-  };
-
-  const drawableAggregate = drawableRes.unwrap();
-  const drawables = drawableAggregate[0];
-  const particles: Particles = drawableAggregate[1];
-
-  function renderer() {
-    renderLoop(gl, programs, camera, playerAabb, drawables, particles, sun, textures);
-    requestAnimationFrame(renderer);
-  }
-
-  renderer();
-}
-
-function updatePlayerPosition(dt: number, playerAabb: math.Aabb, camera: ICamera): void {
-  const front = camera.getFront(vec3.create());
-  const right = camera.getRight(vec3.create());
-  
-  const velocity = [0, 0, 0];
-
-  front[1] = 0;
-  vec3.normalize(front, front);
-
-  if (KEYBOARD.isDown(Keys.w)) math.sub3(velocity, velocity, front);
-  if (KEYBOARD.isDown(Keys.s)) math.add3(velocity, velocity, front);
-  if (KEYBOARD.isDown(Keys.a)) math.sub3(velocity, velocity, right);
-  if (KEYBOARD.isDown(Keys.d)) math.add3(velocity, velocity, right);
-
-  vec3.normalize(<any>velocity, velocity);
-  vec3.scale(<any>velocity, velocity, 0.2);
-
-  playerAabb.move(velocity);
-}
-
-function updateCamera(dt: number, camera: FollowCamera, playerAabb: math.Aabb) {
-  const target = [playerAabb.midX(), playerAabb.midY(), playerAabb.midZ()];
-  debug.updateFollowCamera(dt, camera, target, MOUSE_STATE, KEYBOARD);
-}
-
-function drawPlayer(gl: WebGLRenderingContext, prog: Program, aabb: math.Aabb, drawable: Drawable): void {
-  drawable.vao.bind();
-  debug.drawAabb(gl, prog, mat4.create(), aabb, [0, 0, 0.25], drawable.drawFunction);
-}
-
-function drawGround(gl: WebGLRenderingContext, prog: Program, drawable: Drawable): void {
-  drawable.vao.bind();
-  gl.disable(gl.CULL_FACE);
-  debug.drawGroundPlane(gl, prog, mat4.create(), 10, drawable, [0, 0.15, 0.25]);
-  gl.enable(gl.CULL_FACE);
 }
 
 function drawParticles(gl: WebGLRenderingContext, prog: Program, camera: ICamera, particles: Particles, sun: Sun, textures: Textures): void {
@@ -280,33 +170,12 @@ function drawParticles(gl: WebGLRenderingContext, prog: Program, camera: ICamera
   prog.setVec3('sun_color', sun.color);
 
   prog.setVec3('camera_position', camera.position);
-  prog.set3f('color', 1, 1, 0.25);
+  prog.set3f('color', 1, 1, 1);
 
-  textures.particle.index = 0;
-  textures.particle.activateAndBind();
-  prog.setTexture('particle_texture', 0);
-
-  // gl.disable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.disable(gl.CULL_FACE);
   drawable.drawFunction(gl);
-  gl.enable(gl.CULL_FACE);
-}
-
-function drawSun(gl: WebGLRenderingContext, prog: Program, drawable: Drawable, sun: Sun): void {
-  drawable.vao.bind();
-  debug.drawAt(gl, prog, mat4.create(), sun.position, 1, sun.color, drawable.drawFunction);
-}
-
-function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, drawables: Drawables): void {
-  const model = mat4.create();
-  const cubeDrawFunc = drawables.cube.drawFunction;
-
-  drawables.cube.vao.bind();
-  debug.drawOrigin(gl, prog, model, cubeDrawFunc);
-
-  gl.disable(gl.CULL_FACE);
-  drawables.quad.vao.bind();
-  debug.drawAxesPlanes(gl, prog, model, drawables.quad.drawFunction);
   gl.enable(gl.CULL_FACE);
 }
 
@@ -324,12 +193,12 @@ function updateParticles(gl: WebGLRenderingContext, particles: Particles, player
 
   const noiseSamplers = particles.noiseSamplers;
   const numParticles = particles.numParticles;
+  const twoPi = Math.PI * 2;
 
   for (let i = 0; i < numParticles; i++) {
     const noiseSample = noiseSamplers[i].nextSample();
     const halfNoiseSample = noiseSample - 0.5;
-
-    const ind3 = i*3;
+    const ind3 = i * 3;
 
     translations[ind3+1] += halfNoiseSample * 0.01;
     translations[ind3+2] += halfNoiseSample * 0.05 + 0.02;
@@ -355,10 +224,10 @@ function updateParticles(gl: WebGLRenderingContext, particles: Particles, player
     for (let j = 0; j < 3; j++) {
       const rot = rotations[ind3 + j];
 
-      if (rot > Math.PI*2) {
+      if (rot > twoPi) {
         rotations[ind3+j] = 0;
       } else if (rot < 0) {
-        rotations[ind3+j] = Math.PI*2;
+        rotations[ind3+j] = twoPi;
       }
     }
   }
@@ -373,45 +242,43 @@ function updateParticles(gl: WebGLRenderingContext, particles: Particles, player
   rotVbo.subData(gl, rotations);
 }
 
-function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: FollowCamera, playerAabb: math.Aabb, 
-  drawables: Drawables, particles: Particles, sun: Sun, textures: Textures): void {
-  const dt = 1/60;
+export async function init(gl: WebGLRenderingContext, ac: AudioContext): Promise<boolean> {
+  try {
+    PROGRAMS = {particles: createParticleProgram(gl).unwrap()};
+    TEXTURES = await makeTextures(gl);
+    PARTICLES = makeDrawables(gl, PROGRAMS, await makeSounds(ac)).unwrap()[1];
+    return true;
+  } catch (err) {
+    console.error(err.message);
+    return false;
+  }
+}
 
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  debug.beginRender(gl, camera, 1);
+export function update(gl: WebGLRenderingContext, playerAabb: math.Aabb): boolean {
+  const particles = PARTICLES;
 
-  updatePlayerPosition(dt, playerAabb, camera);
-  updateCamera(dt, camera, playerAabb);
+  if (!particles) {
+    console.warn('Did not yet initialize particles.');
+    return false;
+  }
+
   updateParticles(gl, particles, playerAabb);
+  return true;
+}
 
-  const view = camera.makeViewMatrix();
-  const proj = camera.makeProjectionMatrix();
+export function render(gl: WebGLRenderingContext, camera: ICamera, view: mat4, proj: mat4, sun: Sun): boolean {
+  const programs = PROGRAMS;
+  const textures = TEXTURES;
+  const particles = PARTICLES;
 
-  programs.simple.use();
-  debug.setViewProjection(programs.simple, view, proj);
-
-  // drawDebugComponents(gl, programs.simple, drawables);
-  drawPlayer(gl, programs.simple, playerAabb, drawables.cube);
-  drawGround(gl, programs.simple, drawables.quad);
-  drawSun(gl, programs.simple, drawables.cube, sun);
+  if (!particles || !textures || !programs) {
+    console.warn('Did not yet initialize particles.');
+    return false;
+  }
 
   programs.particles.use();
   debug.setViewProjection(programs.particles, view, proj);
 
   drawParticles(gl, programs.particles, camera, particles, sun, textures);
-}
-
-export function main() {
-  const glResult = debug.createCanvasAndContext(document.body);
-  if (debug.checkError(glResult)) {
-    return;
-  }
-  const gl = glResult.unwrap();
-  const ac = new (window.AudioContext || (<any>window).webkitAudioContext)();
-
-  debug.setupDocumentBody(MOUSE_STATE);
-  debug.createTouchControls(KEYBOARD);
-
-  render(gl, ac);
+  return true;
 }

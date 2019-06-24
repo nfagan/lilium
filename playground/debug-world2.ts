@@ -7,6 +7,7 @@ import * as grassSources from './shaders/debug-grass2';
 import * as voxelGridSources from './shaders/voxel-grid-lighting';
 import * as skySources from './shaders/debug-sky';
 import { PlayerMovement, Player, GrassTextureManager, GrassTile, makeGrassTileData } from '../src/game';
+import * as particles from './particles';
 
 const MOUSE_STATE = debug.makeDebugMouseState();
 const KEYBOARD = new Keyboard();
@@ -70,7 +71,10 @@ type GameState = {
   voxelClicked: boolean,
   playerJumped: boolean,
   frameTimer: Stopwatch,
-  sun: Sun
+  sun: Sun,
+  dprIndex: number,
+  dprs: types.Real3,
+  lastDpr: number
 };
 
 const GAME_STATE: GameState = {
@@ -81,7 +85,10 @@ const GAME_STATE: GameState = {
   sun: {
     position: [50, 20, 50],
     color: [1, 1, 1]
-  }
+  },
+  dprIndex: 1,
+  dprs: [0, 0, 0],
+  lastDpr: -1
 };
 
 function createInstancedProgram(gl: WebGLRenderingContext): Result<Program, string> {
@@ -291,7 +298,7 @@ function makeGrassTextures(gl: WebGLRenderingContext, windSound: AudioBufferSour
 }
 
 async function makeSkyTexture(gl: WebGLRenderingContext): Promise<Texture2D> {
-  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 10);
+  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 1000);
   const tex = new Texture2D(gl);
 
   tex.minFilter = gl.LINEAR;
@@ -382,6 +389,12 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
     return;
   }
 
+  const particleRes = await particles.init(gl, audioContext);
+  if (!particleRes) {
+    console.warn('Particle initialization failed.');
+    return;
+  }
+
   const gridDim = 50;
   const cellDims = [2, 0.5, 2];
   const nFilled = gridDim;
@@ -398,7 +411,7 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
   const player = new Player(playerDims);
   const playerMovement = new PlayerMovement(voxelGrid.grid);
 
-  player.aabb.moveTo3(0, 8, cellDims[1]);
+  player.aabb.moveTo3(8, 8, 8);
 
   const programs: Programs = {
     simple: simpleProgResult.unwrap(),
@@ -889,8 +902,14 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   const dt = Math.max(frameTimer.elapsedSecs(), 1/60);
   const sun = GAME_STATE.sun;
   const grassTextures = textures.grassTextureManager;
+  const dpr = getDpr();
 
-  debug.beginRender(gl, camera, 1);
+  if (dpr !== GAME_STATE.lastDpr) {
+    debug.beginRender(gl, camera, dpr, true);
+    GAME_STATE.lastDpr = dpr;
+  } else {
+    debug.beginRender(gl, camera, dpr);
+  }
 
   if (GAME_STATE.voxelManipulationState !== VoxelManipulationStates.Creating) {
     updatePlayerPosition(dt, player.aabb, playerMovement, camera);
@@ -928,6 +947,9 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
 
   drawSky(gl, programs.sky, drawables.skySphere, textures.skyColor, view, proj, voxelGridInfo.grid);
 
+  particles.update(gl, player.aabb);
+  particles.render(gl, camera, view, proj, sun);
+
   GAME_STATE.voxelClicked = false;
   frameTimer.reset();
 
@@ -936,11 +958,30 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   // }
 }
 
+function getDpr(): number {
+  if (GAME_STATE.dprs[2] === 0) {
+    GAME_STATE.dprs[0] = 0.75;
+    GAME_STATE.dprs[1] = 1;
+    GAME_STATE.dprs[2] = window.devicePixelRatio || 1;
+  } else {
+    if (KEYBOARD.isDown(Keys.k)) {
+      KEYBOARD.markUp(Keys.k);
+
+      GAME_STATE.dprIndex++;
+
+      if (GAME_STATE.dprIndex >= GAME_STATE.dprs.length) {
+        GAME_STATE.dprIndex = 0;
+      }
+    }
+  }
+
+  return GAME_STATE.dprs[GAME_STATE.dprIndex];
+}
+
 function initializeGameStateListeners(gl: WebGLRenderingContext) {
   gl.canvas.addEventListener('click', () => {
     GAME_STATE.voxelClicked = true;
   });
-  // KEYBOARD.addListener(Keys.space, 'playerJump', () => GAME_STATE.playerJumped = true);
 }
 
 export function main() {
@@ -953,7 +994,7 @@ export function main() {
 
   debug.setupDocumentBody(MOUSE_STATE);
 
-  debug.createTouchMoveControls(KEYBOARD);
+  debug.createTouchControls(KEYBOARD);
   initializeGameStateListeners(gl);
   render(gl, audioContext);
 }
