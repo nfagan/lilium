@@ -21,11 +21,7 @@ export class Button {
 
   clearIfPressed(): boolean {
     const pressed = this.pressed;
-
-    if (pressed) {
-      this.pressed = false;
-    }
-
+    this.pressed = false;
     return pressed;
   }
 

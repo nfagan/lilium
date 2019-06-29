@@ -101,8 +101,11 @@ function makeController(keyboard: wgl.Keyboard): Controller {
   const jumpButton = input.Button.bindToKey(keyboard, wgl.Keys.space, 'jump');
   const directionalInput = input.DirectionalInput.fromKeyboard(keyboard);
   directionalInput.invertZ = true;
+  const rotationalInput = new input.RotationalInput();
+  rotationalInput.bindToMouseMove(document.body);
+  rotationalInput.bindToTouchMove(document.body);
 
-  return new Controller(jumpButton, directionalInput);
+  return new Controller(jumpButton, directionalInput, rotationalInput);
 }
 
 function updateCamera(dt: number, camera: wgl.FollowCamera, playerAabb: wgl.math.Aabb, game: Game) {
@@ -141,7 +144,11 @@ function gameLoop(renderContext: wgl.RenderContext, audioContext: AudioContext, 
   const playerAabb = game.player.aabb;
 
   game.moveControls.update(dt, camera, playerAabb);
+  game.controller.update();
+
   updateCamera(dt, camera, playerAabb, game);
+
+  console.log(game.controller.rotationalInput.deltaX());
 
   const view = camera.makeViewMatrix();
   const proj = camera.makeProjectionMatrix();

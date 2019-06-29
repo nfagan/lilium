@@ -1,14 +1,21 @@
 import { Button, DirectionalInput } from './input';
 import { PlayerMovement } from './player-movement';
 import { ICamera, math } from '../gl';
+import { RotationalInput } from './input/rotational';
 
 export class Controller {
   jumpButton: Button;
   directionalInput: DirectionalInput;
+  rotationalInput: RotationalInput;
 
-  constructor(jumpButton: Button, directionalInput: DirectionalInput) {
+  constructor(jumpButton: Button, directionalInput: DirectionalInput, rotationalInput: RotationalInput) {
     this.jumpButton = jumpButton;
     this.directionalInput = directionalInput;
+    this.rotationalInput = rotationalInput;
+  }
+
+  update(): void {
+    this.rotationalInput.update();
   }
 }
 
