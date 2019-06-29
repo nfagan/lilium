@@ -33,9 +33,12 @@ export class ImageQualityManager {
     if (this.quality > ImageQuality.Highest) {
       this.quality = ImageQuality.Lowest;
     }
+
+    this.isDirty = true;
   }
 
   setQuality(quality: ImageQuality): void {
+    this.isDirty = quality !== this.quality;
     this.quality = quality;
   }
 }

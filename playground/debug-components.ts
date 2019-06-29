@@ -120,7 +120,7 @@ function drawPlayer(rc: wgl.RenderContext, playerDrawable: PlayerDrawable,
   const dirVec = [0, 0, 0];
   playerMovement.getDirection(dirVec);
 
-  mat4.translate(model, model, [playerAabb.minX, playerAabb.minY, playerAabb.minZ]);
+  mat4.translate(model, model, [playerAabb.midX(), playerAabb.minY, playerAabb.midZ()]);
   mat4.scale(model, model, [0.4, 0.4, 0.4]);
 
   rc.useProgram(playerDrawable.program);
@@ -143,12 +143,10 @@ function gameLoop(renderContext: wgl.RenderContext, audioContext: AudioContext, 
   const dt = Math.max(frameTimer.elapsedSecs(), 1/60);
   const playerAabb = game.player.aabb;
 
-  game.moveControls.update(dt, camera, playerAabb);
   game.controller.update();
+  game.moveControls.update(dt, camera, playerAabb);
 
   updateCamera(dt, camera, playerAabb, game);
-
-  console.log(game.controller.rotationalInput.deltaX());
 
   const view = camera.makeViewMatrix();
   const proj = camera.makeProjectionMatrix();
@@ -157,8 +155,7 @@ function gameLoop(renderContext: wgl.RenderContext, audioContext: AudioContext, 
 
   const imQuality = game.imageQualityManager;
   wgl.debug.beginRender(renderContext.gl, camera, getDpr(imQuality.getQuality()), imQuality.needsUpdate());
-
-  drawPlayer(renderContext, game.playerDrawable, game.player.aabb, game.playerMovement, view, proj);
+  imQuality.clearNeedsUpdate();
 
   const sunPos = game.sunPosition;
   const sunColor = game.sunColor;
@@ -168,6 +165,8 @@ function gameLoop(renderContext: wgl.RenderContext, audioContext: AudioContext, 
 
   game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
   game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
+  
+  drawPlayer(renderContext, game.playerDrawable, game.player.aabb, game.playerMovement, view, proj);
 
   frameTimer.reset();
 }
