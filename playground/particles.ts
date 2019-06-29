@@ -2,6 +2,7 @@ import { debug, Program, Vao, math, makeAttribute, ICamera, types, Texture2D } f
 import { Result, NumberSampler, asyncTimeout, loadAudioBuffer, loadImage } from '../src/util';
 import { mat4 } from 'gl-matrix';
 import * as particleSources from './shaders/debug-particles';
+import { gameUtil } from '../src/game';
 
 type Drawable = debug.Drawable;
 
@@ -48,7 +49,7 @@ function createParticleProgram(gl: WebGLRenderingContext): Result<Program, strin
 }
 
 async function makeParticleTexture(gl: WebGLRenderingContext): Promise<Texture2D> {
-  const img = await asyncTimeout(() => loadImage('/texture/circle-gradient2.png'), 1000);
+  const img = await asyncTimeout(() => loadImage('/texture/circle-gradient2.png'), 10000);
   const tex = new Texture2D(gl);
 
   tex.minFilter = gl.LINEAR;
@@ -116,7 +117,7 @@ function makeParticles(gl: WebGLRenderingContext, prog: Program, positions: Floa
     numActiveInstances: numParticles
   };
 
-  const noiseSamplers = debug.makeAudioBufferSamplers(numParticles, noiseSource);
+  const noiseSamplers = gameUtil.makeAudioBufferSamplers(numParticles, noiseSource);
 
   return {
     numParticles,
@@ -154,7 +155,7 @@ async function makeTextures(gl: WebGLRenderingContext): Promise<Textures> {
 async function makeSounds(ac: AudioContext): Promise<Sounds> {
   // const noiseUrl = '/sound/wind-a.m4a';
   const noiseUrl = '/sound/wind-a-short2.aac';
-  const noiseSound = await asyncTimeout(() => loadAudioBuffer(ac, noiseUrl), 1000);
+  const noiseSound = await asyncTimeout(() => loadAudioBuffer(ac, noiseUrl), 10000);
   return {noise: noiseSound};
 }
 
@@ -218,8 +219,8 @@ function updateParticles(gl: WebGLRenderingContext, particles: Particles, player
       alphaDeltas[i] = -1;
     }
 
-    rotations[i*3] += 0.01 * noiseSample * 2;
-    rotations[i*3+1] += 0.005 * halfNoiseSample;
+    rotations[ind3] += 0.01 * noiseSample * 2;
+    rotations[ind3+1] += 0.005 * halfNoiseSample;
 
     for (let j = 0; j < 3; j++) {
       const rot = rotations[ind3 + j];

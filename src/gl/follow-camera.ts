@@ -1,5 +1,6 @@
 import { ICamera } from './camera';
 import { mat4, vec3 } from 'gl-matrix';
+import { types, math } from '.';
 
 export class FollowCamera implements ICamera {
   public readonly target: vec3;
@@ -64,30 +65,31 @@ export class FollowCamera implements ICamera {
     vec3.add(pos, targ, tmpVec);
   }
 
-  getFront(out: vec3): vec3 {
-    vec3.sub(out, this.position, this.target);
-    vec3.normalize(out, out);
-    return out;
+  getFront(out: types.Real3): void {
+    math.sub3(out, this.position, this.target);
+    math.norm3(out, out);
   }
 
-  getRight(out: vec3): vec3 {
-    return vec3.copy(out, this.right);
+  getRight(out: types.Real3): void {
+    for (let i = 0; i < 3; i++) {
+      out[i] = this.right[i];
+    }
   }
 
-  move(deltas: vec3 | Array<number>): void {
-    vec3.add(this.position, this.position, deltas);
-    vec3.add(this.target, this.target, deltas);
+  move(deltas: types.Real3): void {
+    math.add3(this.position, this.position, deltas);
+    math.add3(this.target, this.target, deltas);
   }
 
-  moveNeg(deltas: vec3 | Array<number>): void {
-    vec3.sub(this.position, this.position, deltas);
-    vec3.sub(this.target, this.target, deltas);
+  moveNeg(deltas: types.Real3): void {
+    math.sub3(this.position, this.position, deltas);
+    math.sub3(this.target, this.target, deltas);
   }
 
-  targetTo(pos: vec3 | Array<number>): void {
-    vec3.sub(this.tmpVec, pos, this.target);
-    vec3.add(this.target, this.target, this.tmpVec);
-    vec3.add(this.position, this.position, this.tmpVec);
+  targetTo(pos: types.Real3): void {
+    math.sub3(this.tmpVec, pos, this.target);
+    math.add3(this.target, this.target, this.tmpVec);
+    math.add3(this.position, this.position, this.tmpVec);
   }
 
   targetTo3(x: number, y: number, z: number): void {

@@ -1,5 +1,5 @@
-import { math, collision, VoxelGrid } from '../gl';
-import * as types from '../util';
+import { math, collision, VoxelGrid, types } from '../gl';
+import { BuiltinRealArray } from '../util';
 import { MultiJumpHandler } from '.';
 
 function checkIfGrounded(aabb: math.Aabb, grid: VoxelGrid, collisionResult: collision.VoxelGridCollisionResult, vy: number): boolean {
@@ -31,12 +31,14 @@ export class PlayerMovement {
   private readonly xzMovementSpeed: number = 0.15;
   private readonly xzVelocityDecayFactor: number = 1.1;
   private readonly fallSpeed: number = 0.01;
+  private readonly direction: Array<number>;
 
   constructor(grid: VoxelGrid) {
     this.grid = grid;
     this.gridCollider = new collision.VoxelGridCollider(grid);
     this.gridCollisionResult = new collision.VoxelGridCollisionResult();
     this.velocity = [0, 0, 0];
+    this.direction = [0, 0, 1];
     this.isOnGround = true;
     this.triedJump = false;
     this.multiJumpHandler = new MultiJumpHandler(2);
@@ -51,6 +53,12 @@ export class PlayerMovement {
     this.resetVelocity(dt, velocity);
   }
 
+  getDirection(out: types.Real3): void {
+    for (let i = 0; i < 3; i++) {
+      out[i] = this.direction[i];
+    }
+  }
+
   private updateVelocity(dt: number, vel: Array<number>): void {
     const dtSpeed = math.dtSecScale(dt, this.xzMovementSpeed);
 
@@ -58,6 +66,13 @@ export class PlayerMovement {
     vel[1] = 0;
 
     math.norm3(vel, vel);
+
+    if (vel[0] !== 0 || vel[1] !== 0 || vel[2] !== 0) {
+      this.direction[0] = vel[0];
+      this.direction[1] = vel[1];
+      this.direction[2] = vel[2];
+    }
+
     math.scale3(vel, vel, dtSpeed);
 
     vel[1] = tmpYVelocity;
@@ -97,7 +112,7 @@ export class PlayerMovement {
     return this.isOnGround || this.multiJumpHandler.canJump();
   }
 
-  addVelocity(inDirection: types.BuiltinRealArray): void {
+  addVelocity(inDirection: BuiltinRealArray): void {
     math.add3(this.velocity, this.velocity, inDirection);
   }
 

@@ -1,72 +1,18 @@
 import { Program } from './program';
 import { PrimitiveTypedArray } from '../util/types';
-
-export type AttributeDescriptor = {
-  name: string,
-  size: number,
-  location?: number,
-  type: number,
-  divisor?: number
-};
-
-export function makeAttribute(name: string, type: number, size: number, divisor?: number): AttributeDescriptor {
-  return {name, type, size, divisor};
-}
-
-export type VboDescriptor = {
-  name: string,
-  attributes: Array<AttributeDescriptor>,
-  data: PrimitiveTypedArray
-};
-
-export type EboDescriptor = {
-  name: string,
-  indices: Uint16Array
-};
-
-export class BufferDescriptor {
-  private attributes: Array<AttributeDescriptor>;
-
-  constructor() {
-    this.attributes = [];
-  }
-
-  getAttributes(): Array<AttributeDescriptor> {
-    return this.attributes.slice();
-  }
-
-  getAttributeLocations(prog: Program): void {
-    for (let i = 0; i < this.attributes.length; i++) {
-      this.attributes[i].location = prog.getAttributeLocation(this.attributes[i].name);
-    }
-  }
-
-  addAttribute(attr: AttributeDescriptor): void {
-    if (this.attributes.length > 0 && this.attributes[0].type !== attr.type) {
-      throw new Error('Attribute types must match between attributes.');
-    }
-
-    this.attributes.push(attr);
-  }
-
-  numComponents(): number {
-    let sz = 0;
-
-    for (let i = 0; i < this.attributes.length; i++) {
-      sz += this.attributes[i].size;
-    }
-
-    return sz;
-  }
-}
+import { types } from '.';
 
 export class Vao {
+  private static ID: number = 0;
+
   private gl: WebGLRenderingContext;
   private oesVaoExt: OES_vertex_array_object = null;
   private vao: WebGLVertexArrayObjectOES = null;
   private vbos: {[s: string]: Vbo};
   private ebos: {[s: string]: Ebo};
   private isBoundState: boolean;
+  
+  readonly id: number;
 
   constructor(gl: WebGLRenderingContext) {
     const oesVaoExt = gl.getExtension('OES_vertex_array_object');
@@ -80,6 +26,7 @@ export class Vao {
     this.vao = oesVaoExt.createVertexArrayOES();
     this.vbos = {};
     this.ebos = {};
+    this.id = Vao.ID++;
   }
 
   isBound(): boolean {
@@ -159,7 +106,7 @@ export class Vao {
     }
   }
 
-  static fromDescriptors(gl: WebGLRenderingContext, prog: Program, vboDescriptors: Array<VboDescriptor>, eboDescriptor?: EboDescriptor): Vao {
+  static fromDescriptors(gl: WebGLRenderingContext, prog: Program, vboDescriptors: Array<types.VboDescriptor>, eboDescriptor?: types.EboDescriptor): Vao {
     prog.use();
 
     const vao = new Vao(gl);
@@ -171,7 +118,7 @@ export class Vao {
       const vboName = vboDescriptor.name;
       const vboData = vboDescriptor.data;
 
-      const bufferDescriptor = new BufferDescriptor();
+      const bufferDescriptor = new types.BufferDescriptor();
 
       for (let j = 0; j < attributeDescriptors.length; j++) {
         bufferDescriptor.addAttribute(attributeDescriptors[j]);
@@ -217,7 +164,7 @@ export class Vbo {
   private vbo: WebGLBuffer = null;
   private dataSize: number;
 
-  constructor(gl: WebGLRenderingContext, descriptor: BufferDescriptor, data: PrimitiveTypedArray, drawType?: number) {
+  constructor(gl: WebGLRenderingContext, descriptor: types.BufferDescriptor, data: PrimitiveTypedArray, drawType?: number) {
     if (drawType === undefined) {
       drawType = gl.STATIC_DRAW;
     }

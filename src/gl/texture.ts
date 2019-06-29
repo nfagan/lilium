@@ -93,6 +93,10 @@ export class Texture2D {
     gl.texSubImage2D(gl.TEXTURE_2D, level, 0, 0, width, height, format, type, data);
   }
 
+  dispose(): void {
+    this.gl.deleteTexture(this.texture);
+  }
+
   numComponentsPerPixel(): number {
     switch (this.srcFormat) {
       case this.gl.LUMINANCE_ALPHA:

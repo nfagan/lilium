@@ -1,21 +1,27 @@
 import { Shader } from './shader';
 import * as types from './types';
 import { mat4 } from 'gl-matrix';
+import { shaderBuilder } from '.';
 
 type StringMap<T> = {
   [s: string]: T
 };
 
 export class Program {
+  private static ID: number = 0;
+
   private gl: WebGLRenderingContext;
   private program: WebGLProgram = null;
   private attributeLocations: StringMap<number>;
   private uniformLocations: StringMap<WebGLUniformLocation>;
 
+  readonly id: number;
+
   constructor(gl: WebGLRenderingContext) {
     this.gl = gl;
     this.attributeLocations = {};
-    this.uniformLocations = {}
+    this.uniformLocations = {};
+    this.id = Program.ID++;
   }
 
   private maybeGetCachedLocation<T>(map: StringMap<T>, kind: string, name: string, 
@@ -158,5 +164,11 @@ export class Program {
     prog.attachShadersAndFinalize([vertShader, fragShader]);
 
     return prog;
+  }
+
+  static fromSchemas(gl: WebGLRenderingContext, vertSchema: types.ShaderSchema, fragSchema: types.ShaderSchema): Program {
+    const vertSource = shaderBuilder.shaderSchemaToString(vertSchema);
+    const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
+    return Program.fromSources(gl, vertSource, fragSource);
   }
 }

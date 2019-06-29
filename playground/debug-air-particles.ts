@@ -1,8 +1,9 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, math, makeAttribute, RenderContext } from '../src/gl';
-import { Result } from '../src/util';
+import { Result, asyncTimeout, loadAudioBuffer } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
-import { Player } from '../src/game';
+import { Player, AirParticles, AirParticleResources, components, AirParticleOptions, GrassModelOptions, GrassTile, GrassTextureOptions } from '../src/game';
+import { GrassResources, GrassComponent } from '../src/game/components/grass';
 
 const MOUSE_STATE = debug.makeDebugMouseState();
 const KEYBOARD = new Keyboard();
@@ -16,6 +17,11 @@ type Drawables = {
 
 type Programs = {
   simple: Program,
+};
+
+type Game = {
+  airParticleComponent: AirParticles,
+  grassComponent: GrassComponent
 };
 
 function createSimpleProgram(gl: WebGLRenderingContext): Result<Program, string> {
@@ -58,7 +64,7 @@ function makeDrawables(gl: WebGLRenderingContext, programs: Programs): Result<Dr
   }
 }
 
-async function render(renderContext: RenderContext, ac: AudioContext) {
+async function render(renderContext: RenderContext, audioContext: AudioContext) {
   const gl = renderContext.gl;
   const camera = debug.makeFollowCamera(gl);
 
@@ -82,8 +88,51 @@ async function render(renderContext: RenderContext, ac: AudioContext) {
 
   const drawables = drawableRes.unwrap();
 
+  const particleOptions: AirParticleOptions = {
+    numParticles: 1000,
+    particleGridScale: 10
+  };
+
+  const modelOptions: GrassModelOptions = {
+    numSegments: 8,
+    bladeHeight: 1
+  };
+
+  const tileOptions: GrassTile = {
+    dimension: 200,
+    density: 0.1,
+    offsetX: 0,
+    offsetY: 0,
+    offsetZ: 0
+  };
+
+  const grassTextureOptions: GrassTextureOptions = {
+    textureSize: 256
+  };
+
+  const grassResources = new GrassResources(10000);
+  await grassResources.load(audioContext, err => {
+    console.log(err);
+  });
+
+  const grassComponent = new GrassComponent(renderContext, grassResources);
+  grassComponent.create(tileOptions, modelOptions, grassTextureOptions);
+
+  const particleResources = new AirParticleResources(10000);
+  await particleResources.load(audioContext, err => {
+    console.log(err);
+  });
+
+  const airParticleComponent = new AirParticles(renderContext, particleResources.noiseSource);
+  airParticleComponent.create(particleOptions);
+
+  const game: Game = {
+    grassComponent,
+    airParticleComponent
+  };
+
   function renderer() {
-    renderLoop(gl, programs, camera, player, drawables);
+    renderLoop(renderContext, programs, camera, player, drawables, game);
     requestAnimationFrame(renderer);
   }
 
@@ -115,36 +164,40 @@ function updateCamera(dt: number, camera: FollowCamera, playerAabb: math.Aabb) {
   debug.updateFollowCamera(dt, camera, target, MOUSE_STATE, KEYBOARD);
 }
 
-function drawPlayer(gl: WebGLRenderingContext, prog: Program, aabb: math.Aabb, drawable: Drawable): void {
-  drawable.vao.bind();
-  debug.drawAabb(gl, prog, mat4.create(), aabb, [0, 0, 1], drawable.drawFunction);
+function drawPlayer(renderContext: RenderContext, prog: Program, aabb: math.Aabb, drawable: Drawable): void {
+  renderContext.bindVao(drawable.vao);
+  debug.drawAabb(renderContext.gl, prog, mat4.create(), aabb, [0, 0, 1], drawable.drawFunction);
 }
 
-function drawGround(gl: WebGLRenderingContext, prog: Program, drawable: Drawable): void {
-  drawable.vao.bind();
+function drawGround(renderContext: RenderContext, prog: Program, drawable: Drawable): void {
+  const gl = renderContext.gl;
+  renderContext.bindVao(drawable.vao);
   gl.disable(gl.CULL_FACE);
   debug.drawGroundPlane(gl, prog, mat4.create(), 20, drawable, [0, 1, 1]);
   gl.enable(gl.CULL_FACE);
 }
 
-function drawDebugComponents(gl: WebGLRenderingContext, prog: Program, drawables: Drawables): void {
+function drawDebugComponents(renderContext: RenderContext, prog: Program, drawables: Drawables): void {
   const model = mat4.create();
   const cubeDrawFunc = drawables.cube.drawFunction;
+  const gl = renderContext.gl;
 
-  drawables.cube.vao.bind();
+  renderContext.bindVao(drawables.cube.vao);
   debug.drawOrigin(gl, prog, model, cubeDrawFunc);
 
   gl.disable(gl.CULL_FACE);
-  drawables.quad.vao.bind();
+
+  renderContext.bindVao(drawables.quad.vao);
   debug.drawAxesPlanes(gl, prog, model, drawables.quad.drawFunction);
   gl.enable(gl.CULL_FACE);
 }
 
 
-function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: FollowCamera, player: Player, drawables: Drawables): void {
+function renderLoop(renderContext: RenderContext, programs: Programs, camera: FollowCamera, player: Player, drawables: Drawables, game: Game): void {
   const dt = 1/60;
+  const gl = renderContext.gl;
 
-  debug.beginRender(gl, camera, 1);
+  debug.beginRender(gl, camera, 0.75);
 
   updatePlayerPosition(dt, player.aabb, camera);
   updateCamera(dt, camera, player.aabb);
@@ -152,12 +205,22 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   const view = camera.makeViewMatrix();
   const proj = camera.makeProjectionMatrix();
 
-  programs.simple.use();
-  debug.setViewProjection(programs.simple, view, proj);
+  if (renderContext.useProgram(programs.simple)) {
+    debug.setViewProjection(programs.simple, view, proj);
+  }
 
-  drawDebugComponents(gl, programs.simple, drawables);
-  drawPlayer(gl, programs.simple, player.aabb, drawables.cube);
-  drawGround(gl, programs.simple, drawables.quad);
+  drawDebugComponents(renderContext, programs.simple, drawables);
+  drawPlayer(renderContext, programs.simple, player.aabb, drawables.cube);
+  drawGround(renderContext, programs.simple, drawables.quad);
+
+  const sunPos = [8, 10, 8];
+  const sunColor = [1, 1, 1];
+
+  game.airParticleComponent.update(dt, player.aabb);
+  game.grassComponent.update(dt, player.aabb);
+
+  game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
+  game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
 }
 
 export function main() {

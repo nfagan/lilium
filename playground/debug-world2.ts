@@ -1,12 +1,12 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, VoxelGrid, collision, MousePicker, math, types, 
-  Texture2D, parse, makeAttribute, VboDescriptor } from '../src/gl';
+  Texture2D, parse, makeAttribute, VboDescriptor, RenderContext } from '../src/gl';
 import { Result, Stopwatch, loadAudioBuffer, loadImage, loadText, asyncTimeout } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
 import * as grassSources from './shaders/debug-grass2';
 import * as voxelGridSources from './shaders/voxel-grid-lighting';
 import * as skySources from './shaders/debug-sky';
-import { PlayerMovement, Player, GrassTextureManager, GrassTile, makeGrassTileData } from '../src/game';
+import { PlayerMovement, Player, GrassTextureManager, GrassTile, makeGrassTileData, gameUtil, AirParticles, AirParticleResources } from '../src/game';
 import * as particles from './particles';
 
 const MOUSE_STATE = debug.makeDebugMouseState();
@@ -74,7 +74,8 @@ type GameState = {
   sun: Sun,
   dprIndex: number,
   dprs: types.Real3,
-  lastDpr: number
+  lastDpr: number,
+  airParticleComponent: AirParticles
 };
 
 const GAME_STATE: GameState = {
@@ -88,7 +89,8 @@ const GAME_STATE: GameState = {
   },
   dprIndex: 1,
   dprs: [0, 0, 0],
-  lastDpr: -1
+  lastDpr: -1,
+  airParticleComponent: null
 };
 
 function createInstancedProgram(gl: WebGLRenderingContext): Result<Program, string> {
@@ -109,13 +111,13 @@ function createSimpleProgram(gl: WebGLRenderingContext): Result<Program, string>
 
 async function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
   const soundUrl = '/sound/lf_noise_short.m4a';
-  const buffer = await asyncTimeout(() => loadAudioBuffer(audioContext, soundUrl), 1000);
+  const buffer = await asyncTimeout(() => loadAudioBuffer(audioContext, soundUrl), 10000);
   return buffer;
 }
 
 async function loadModels(): Promise<parse.Obj> {
   const url = '/model/tree2.obj';
-  const src = await asyncTimeout(() => loadText(url), 1000);
+  const src = await asyncTimeout(() => loadText(url), 10000);
   return new parse.Obj(src);
 }
 
@@ -283,22 +285,23 @@ function makeDrawableFromObj(gl: WebGLRenderingContext, prog: Program, obj: pars
 function makeGrassTextures(gl: WebGLRenderingContext, windSound: AudioBufferSourceNode, yCellDim: number): GrassTextureManager {
   const grassTileInfo: GrassTile = {
     density: 0.1,
-    dimension: 200
+    dimension: 200,
+    offsetX: 2,
+    offsetY: yCellDim,
+    offsetZ: 2
   };
 
   const textureSize = 256;
-  const bladeHeight = 1;
+  const windNoise = gameUtil.getBufferSourceNodeChannelData(windSound);
 
-  const grassTextures = new GrassTextureManager(gl, grassTileInfo, bladeHeight, textureSize, windSound);
-  grassTextures.offsetX = 2;
-  grassTextures.offsetY = yCellDim;
-  grassTextures.offsetZ = 2;
+  const grassTextures = new GrassTextureManager(gl, grassTileInfo, windNoise);
+  grassTextures.create({textureSize});
 
   return grassTextures;
 }
 
 async function makeSkyTexture(gl: WebGLRenderingContext): Promise<Texture2D> {
-  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 1000);
+  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 10000);
   const tex = new Texture2D(gl);
 
   tex.minFilter = gl.LINEAR;
@@ -381,6 +384,7 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
   const instancedProgResult = createInstancedProgram(gl);
   const grassProgResult = createGrassProgram(gl);
   const skyProgResult = createSkyProgram(gl);
+  const renderContext = new RenderContext(gl);
 
   if (debug.checkError(simpleProgResult) || 
       debug.checkError(instancedProgResult) ||
@@ -394,6 +398,15 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
     console.warn('Particle initialization failed.');
     return;
   }
+
+  const airParticleResources = new AirParticleResources(10000, '/sound/wind-a-short2.aac');
+  await airParticleResources.load(audioContext, err => {
+    console.log(err);
+  });
+
+  const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource);
+  airParticles.create({numParticles: 1000, particleGridScale: 10});
+  GAME_STATE.airParticleComponent = airParticles;
 
   const gridDim = 50;
   const cellDims = [2, 0.5, 2];
@@ -869,8 +882,11 @@ function updatePlayerPosition(dt: number, playerAabb: math.Aabb, playerMovement:
     KEYBOARD.markUp(Keys.space);
   }
 
-  const front = camera.getFront(vec3.create());
-  const right = camera.getRight(vec3.create());
+  const front = vec3.create();
+  const right = vec3.create();
+
+  camera.getFront(front);
+  camera.getRight(right);
   
   const velocity = [0, 0, 0];
 
@@ -927,7 +943,9 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
       handleVoxelSelection(voxelGridInfo, gl, camera, view, proj);
       break;
     case VoxelManipulationStates.Creating:
-      handleVoxelAddition(voxelGridInfo, player.aabb, camera.getFront(vec3.create()));
+      const front = vec3.create();
+      camera.getFront(front);
+      handleVoxelAddition(voxelGridInfo, player.aabb, front);
       break;
   }
 
@@ -942,13 +960,16 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   updateVoxelInstances(gl, voxelGridInfo, drawables.instancedCube);
   drawInstancedVoxelGrid(gl, programs, camera, drawables, sun, voxelGridInfo, view, proj);
 
-  grassTextures.update(player.aabb, 1, 1);
+  grassTextures.update(player.aabb, 1, 1, 1);
   handleGrassDrawing(gl, programs, camera, drawables, grassTextures, sun, view, proj);
 
   drawSky(gl, programs.sky, drawables.skySphere, textures.skyColor, view, proj, voxelGridInfo.grid);
 
-  particles.update(gl, player.aabb);
-  particles.render(gl, camera, view, proj, sun);
+  GAME_STATE.airParticleComponent.update(dt, player.aabb);
+  GAME_STATE.airParticleComponent.draw(camera.position, view, proj, sun.position, sun.color);
+
+  // particles.update(gl, player.aabb);
+  // particles.render(gl, camera, view, proj, sun);
 
   GAME_STATE.voxelClicked = false;
   frameTimer.reset();

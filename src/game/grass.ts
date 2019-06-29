@@ -1,16 +1,27 @@
-import { Texture2D, math } from '../gl';
-import { NumberSampler } from '../util';
+import { Texture2D, math, debug, RenderContext, types, Vao, Program, ICamera } from '../gl';
+import { NumberSampler, asyncTimeout, loadAudioBuffer } from '../util';
+import * as gameUtil from './util';
+import * as grassProgramSources from './shaders/grass';
+import { mat4 } from 'gl-matrix';
 
 export type GrassTile = {
   density: number,
-  dimension: number
+  dimension: number,
+  offsetX: number,
+  offsetY: number,
+  offsetZ: number
+};
+
+export type GrassTextureOptions = {
+  textureSize: number
 };
 
 export class GrassTextureManager {
   private gl: WebGLRenderingContext;
-  private windAudioSamplers: Array<NumberSampler>;
+  private windNoiseSamplers: Array<NumberSampler>;
   private textureSize: number;
-  private grassBladeHeight: number;
+  private isCreated: boolean;
+  private windNoiseSource: Float32Array;
 
   velocityTexture: Texture2D;
   windTexture: Texture2D;
@@ -24,19 +35,39 @@ export class GrassTextureManager {
   windVx: number;
   windVz: number;
 
-  constructor(gl: WebGLRenderingContext, grassTileInfo: GrassTile, bladeHeight: number, textureSize: number, windAudioSource: AudioBufferSourceNode) {
+  constructor(gl: WebGLRenderingContext, grassTileInfo: GrassTile, windNoiseSource: Float32Array) {
     this.gl = gl;
     this.grassTileInfo = grassTileInfo;
-    this.textureSize = textureSize;
-    this.makeTextures(gl, textureSize);
-    this.windAudioSamplers = makeWindAudioSamplers(textureSize * textureSize, windAudioSource);
-    this.offsetX = 0;
-    this.offsetY = 0;
-    this.offsetZ = 0;
+    this.offsetX = grassTileInfo.offsetX;
+    this.offsetY = grassTileInfo.offsetY;
+    this.offsetZ = grassTileInfo.offsetZ;
     this.windVx = 0.2;
     this.windVz = 0.05;
     this.decayAmount = 1.1;
-    this.grassBladeHeight = bladeHeight;
+    this.windNoiseSource = windNoiseSource;
+    this.isCreated = false;
+  }
+
+  dispose(): void {
+    if (this.isCreated) {
+      this.velocityTexture.dispose();
+      this.windTexture.dispose();
+      this.isCreated = false;
+    }
+  }
+
+  create(options: GrassTextureOptions): void {
+    if (this.isCreated) {
+      this.dispose();
+    }
+
+    const textureSize = options.textureSize;
+
+    this.makeTextures(this.gl, textureSize);
+    this.windNoiseSamplers = gameUtil.makeNormalizedRandomizedSamplers(textureSize * textureSize, this.windNoiseSource);
+    this.textureSize = textureSize;
+
+    this.isCreated = true;
   }
 
   private makeTextures(gl: WebGLRenderingContext, textureSize: number): void {
@@ -50,9 +81,14 @@ export class GrassTextureManager {
     this.windTexture = windTexture;
   }
 
-  update(playerAabb: math.Aabb, scaleX: number, scaleZ: number): void {
+  update(playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
+    if (!this.isCreated) {
+      console.warn('Grass textures not yet created.');
+      return;
+    }
+
     const grassTileInfo = this.grassTileInfo;
-    const windAudioSamplers = this.windAudioSamplers;
+    const windAudioSamplers = this.windNoiseSamplers;
     const windTexture = this.windTexture;
     const velocityTexture = this.velocityTexture;
 
@@ -112,7 +148,7 @@ export class GrassTextureManager {
     }
 
     const outOfBoundsXz = fracLocX > 1 || fracLocX < 0 || fraclocZ > 1 || fraclocZ < 0;
-    const outOfBoundsY = playerY < 0 || playerY > this.grassBladeHeight;
+    const outOfBoundsY = playerY < 0 || playerY > bladeHeight;
 
     if (outOfBoundsXz || outOfBoundsY) {
       numPixelsX = 0;
@@ -172,32 +208,6 @@ export function makeGrassTileData(grassTileInfo: GrassTile, translations: Array<
       uvs.push(zPos / maxDim);
     }
   }
-}
-
-function makeWindAudioSamplers(numSamplers: number, bufferSource: AudioBufferSourceNode): Array<NumberSampler> {
-  //  https://blog.demofox.org/2017/05/29/when-random-numbers-are-too-random-low-discrepancy-sequences/
-
-  const buffer = bufferSource.buffer;
-  const channelData = buffer.getChannelData(0);
-  const samplers: Array<NumberSampler> = [];
-  
-  math.normalize01(channelData, channelData);
-
-  const gr = math.goldenRatio();
-  let value = Math.random();
-  
-  for (let i = 0; i < numSamplers; i++) {
-    const sampler = new NumberSampler(channelData);
-    // sampler.seek(0.4 + i/numSamplers/2);
-    // sampler.seek(Math.random());
-    value += gr;
-    value %= 1.0;
-
-    sampler.seek(value);
-    samplers.push(sampler);
-  }
-
-  return samplers;
 }
 
 function makeWindTexture(gl: WebGLRenderingContext, textureSize: number): Texture2D {
@@ -281,4 +291,264 @@ function checkTextures(windTexture: Texture2D, velocityTexture: Texture2D): bool
   }
 
   return true;
+}
+
+export type GrassModelOptions = {
+  numSegments: number;
+}
+
+export class GrassDrawable {
+  //  Should match the shader source.
+  public readonly NUM_LIGHTS = 3;
+
+  private renderContext: RenderContext;
+  private isCreated: boolean;
+  private modelOptions: GrassModelOptions;
+  private tileOptions: GrassTile;
+  private program: Program;
+  private drawable: types.Drawable;
+  private model: mat4;
+  private inverseTransposeModel: mat4;
+  private grassTextures: GrassTextureManager;
+  private lightColors: Array<types.Real3>;
+  private lightPositions: Array<types.Real3>;
+
+  scale: Array<number>;
+  color: Array<number>;
+
+  constructor(renderContext: RenderContext, grassTextures: GrassTextureManager) {
+    this.renderContext = renderContext;
+    this.isCreated = false;
+    this.model = mat4.create();
+    this.inverseTransposeModel = mat4.create();
+    this.scale = [0.05, 1, 1];
+    this.color = [0.5, 1, 0.5];
+    this.grassTextures = grassTextures;
+    this.createLights();
+  }
+
+  private createLights(): void {
+    this.lightColors = [];
+    this.lightPositions = [];
+
+    for (let i = 0; i < this.NUM_LIGHTS; i++) {
+      this.lightColors.push([0, 0, 0]);
+      this.lightPositions.push([0, 0, 0]);
+    }
+  }
+
+  dispose(): void {
+    if (this.isCreated) {
+      this.drawable.vao.dispose();
+      this.program.dispose();
+      this.isCreated = false;
+    }
+  }
+
+  private handleLights(sunPosition: types.Real3, sunColor: types.Real3, dim: number, offX: number, offZ: number): void {
+    const lightPos = this.lightPositions;
+    const lightColor = this.lightColors;
+
+    for (let i = 0; i < 2; i++) {
+      lightColor[i][0] = 1;
+      lightColor[i][1] = 0.98;
+      lightColor[i][2] = 0.8;
+    }
+
+    for (let i = 0; i < 3; i++) {
+      lightPos[2][i] = sunPosition[i];
+      lightColor[2][i] = sunColor[i];
+    }
+
+    lightPos[0][0] = 1 + offX;
+    lightPos[0][1] = 3;
+    lightPos[0][2] = 1 + offZ;
+
+    lightPos[1][0] = dim + offX;
+    lightPos[1][1] = 3;
+    lightPos[1][2] = dim + offZ;
+  }
+
+  draw(cameraPosition: types.Real3, view: mat4, proj: mat4, sunPosition: types.Real3, sunColor: types.Real3): void {
+    const renderContext = this.renderContext;
+    const grassTextures = this.grassTextures;
+    const grassProg = this.program;
+    const gl = renderContext.gl;
+
+    const dim = grassTextures.grassTileInfo.dimension * grassTextures.grassTileInfo.density;
+    const offX = grassTextures.offsetX;
+    const offY = grassTextures.offsetY;
+    const offZ = grassTextures.offsetZ;
+
+    const lightPos = this.lightPositions;
+    const lightColor = this.lightColors;
+
+    this.handleLights(sunPosition, sunColor, dim, offX, offZ);
+
+    renderContext.useProgram(grassProg);
+    debug.setViewProjection(grassProg, view, proj);
+  
+    grassTextures.windTexture.activateAndBind();
+    grassProg.setTexture('wind_texture', grassTextures.windTexture.index);
+  
+    grassTextures.velocityTexture.activateAndBind();
+    grassProg.setTexture('velocity_texture', grassTextures.velocityTexture.index);
+
+    const model = this.model;
+    const invTransModel = this.inverseTransposeModel;
+    const scale = this.scale;
+
+    mat4.identity(model);
+    mat4.identity(invTransModel);
+  
+    mat4.scale(model, model, scale);
+    mat4.transpose(invTransModel, model);
+    mat4.invert(invTransModel, invTransModel);
+  
+    grassProg.setMat4('model', model);
+    grassProg.setMat4('inv_trans_model', invTransModel);
+    grassProg.setVec3('color', this.color);
+    grassProg.setVec3('camera_position', cameraPosition);
+    grassProg.set1i('invert_normal', 0);
+    grassProg.set3f('origin_offset', offX, offY, offZ);
+    grassProg.set1i('num_point_lights', lightPos.length);
+  
+    for (let i = 0; i < lightPos.length; i++) {
+      grassProg.setVec3(`light_position[${i}]`, lightPos[i]);
+      grassProg.setVec3(`light_color[${i}]`, lightColor[i]);
+    }
+
+    renderContext.bindVao(this.drawable.vao);
+  
+    gl.enable(gl.CULL_FACE);
+    gl.cullFace(gl.BACK);
+    this.drawable.draw();
+  
+    grassProg.set1i('invert_normal', 1);
+    gl.cullFace(gl.FRONT);
+    this.drawable.draw();
+  }
+
+  create(modelOptions: GrassModelOptions): void {
+    if (this.isCreated) {
+      this.dispose();
+    }
+
+    this.modelOptions = Object.assign({}, modelOptions);
+
+    const gl = this.renderContext.gl;
+
+    this.program = Program.fromSources(gl, grassProgramSources.vertex, grassProgramSources.fragment);
+
+    const numSegments = modelOptions.numSegments;
+    const positions = debug.segmentedQuadPositions(numSegments);
+
+    const translations: Array<number> = [];
+    const rotations: Array<number> = [];
+    const uvs: Array<number> = [];
+
+    makeGrassTileData(this.grassTextures.grassTileInfo, translations, rotations, uvs);
+
+    const vboDescriptors: Array<types.VboDescriptor> = [
+      {name: 'position', attributes: [types.makeAttribute('a_position', gl.FLOAT, 3)], data: positions},
+      {name: 'translation', attributes: [types.makeAttribute('a_translation', gl.FLOAT, 3, 1)], data: new Float32Array(translations)},
+      {name: 'rotation', attributes: [types.makeAttribute('a_rotation', gl.FLOAT, 1, 1)], data: new Float32Array(rotations)},
+      {name: 'uv', attributes: [types.makeAttribute('a_uv', gl.FLOAT, 2, 1)], data: new Float32Array(uvs)}
+    ];
+
+    const vao = Vao.fromDescriptors(gl, this.program, vboDescriptors);
+    
+    const numVerts = positions.length/3;
+    const numInstances = translations.length/3;
+
+    const drawable = new types.Drawable(this.renderContext, vao, (renderContext, drawable) => {
+      const mode = drawable.mode;
+      const first = drawable.offset;
+      const count = drawable.count;
+      const primCount = drawable.numActiveInstances;
+
+      renderContext.extInstancedArrays.drawArraysInstancedANGLE(mode, first, count, primCount);
+    });
+
+    drawable.mode = gl.TRIANGLES;
+    drawable.offset = 0;
+    drawable.count = numVerts;
+    drawable.numActiveInstances = numInstances;
+    drawable.isInstanced = true;
+
+    this.drawable = drawable;
+
+    this.isCreated = true;
+  }
+}
+
+export class GrassResources {
+  private noiseUrl: string;
+  private timeoutMs: number;
+
+  noiseSource: Float32Array;
+
+  constructor(timeoutMs: number, noiseUrl: string) {
+    this.noiseSource = new Float32Array(1);
+    this.noiseUrl = noiseUrl;
+    this.timeoutMs = timeoutMs;
+  }
+  
+  async load(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
+    try {
+      const noiseNode = await asyncTimeout(() => loadAudioBuffer(audioContext, this.noiseUrl), this.timeoutMs);
+      this.noiseSource = gameUtil.getBufferSourceNodeChannelData(noiseNode);
+    } catch (err) {
+      errCb(err);
+    }
+  }
+}
+
+export class GrassComponent {
+  grassTextures: GrassTextureManager;
+  grassDrawable: GrassDrawable;
+
+  private renderContext: RenderContext;
+  private resources: GrassResources;
+  
+  constructor(renderContext: RenderContext, resources: GrassResources) {
+    this.renderContext = renderContext;
+    this.resources = resources;
+    this.grassTextures = null;
+    this.grassDrawable = null;
+  }
+
+  dispose(): void {
+    if (this.grassTextures) {
+      this.grassTextures.dispose();
+    }
+
+    if (this.grassDrawable) {
+      this.grassDrawable.dispose();
+    }
+  }
+  
+  create(grassTileOptions: GrassTile, modelOptions: GrassModelOptions, grassTextureOptions: GrassTextureOptions): void {
+    this.dispose();
+
+    const renderContext = this.renderContext;
+
+    const grassTextures = new GrassTextureManager(renderContext.gl, grassTileOptions, this.resources.noiseSource);
+    grassTextures.create(grassTextureOptions);
+
+    const grassDrawable = new GrassDrawable(renderContext, grassTextures);
+    grassDrawable.create(modelOptions);
+
+    this.grassTextures = grassTextures;
+    this.grassDrawable = grassDrawable;
+  }
+
+  update(dt: number, playerAabb: math.Aabb): void {
+    const bladeHeight = this.grassDrawable.scale[1];
+    this.grassTextures.update(playerAabb, 1, 1, bladeHeight);
+  }
+
+  render(renderContext: RenderContext, camera: ICamera, view: mat4, proj: mat4, sunPosition: types.Real3, sunColor: types.Real3) {
+    this.grassDrawable.draw(camera.position, view, proj, sunPosition, sunColor);
+  }
 }

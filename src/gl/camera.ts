@@ -1,4 +1,5 @@
 import { mat4, vec3 } from 'gl-matrix';
+import { types } from '.';
 
 export interface ICamera {
   readonly position: vec3;
@@ -6,14 +7,14 @@ export interface ICamera {
   makeViewMatrix(): mat4;
   makeProjectionMatrix(): mat4;
 
-  move(deltas: vec3 | Array<number>): void;
-  moveNeg(deltas: vec3 | Array<number>): void;
+  move(deltas: types.Real3): void;
+  moveNeg(deltas: types.Real3): void;
   rotate(dx: number, dy: number): void;
   
   setAspect(ratio: number): void;
   setNear(near: number): void;
   setFar(far: number): void;
 
-  getFront(out: vec3): vec3;
-  getRight(out: vec3): vec3;
+  getFront(out: types.Real3): void;
+  getRight(out: types.Real3): void;
 }

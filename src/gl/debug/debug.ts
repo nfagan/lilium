@@ -1,4 +1,4 @@
-import { Result, NumberSampler } from '../../util';
+import { Result, NumberSampler, BuiltinRealArray } from '../../util';
 import { types, Program, math, Keyboard, Keys, Vao, ICamera, FollowCamera } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
@@ -514,7 +514,16 @@ function addTouchElementEventListener(element: HTMLDivElement, keyboard: Keyboar
   element.addEventListener('touchcancel', _ => keyboard.markUp(key));
 }
 
-export function createTouchControls(keyboard: Keyboard) {
+export type DebugTouchControls = {
+  left: HTMLDivElement,
+  right: HTMLDivElement,
+  up: HTMLDivElement,
+  down: HTMLDivElement,
+  jump: HTMLDivElement,
+  toggleQuality: HTMLDivElement,
+}
+
+export function createTouchControls(keyboard: Keyboard): DebugTouchControls {
   const left = document.createElement('div');
   const right = document.createElement('div');
   const down = document.createElement('div');
@@ -544,28 +553,6 @@ export function createTouchControls(keyboard: Keyboard) {
   document.body.appendChild(up);
   document.body.appendChild(jump);
   document.body.appendChild(toggleQuality);
-}
 
-
-export function makeAudioBufferSamplers(numSamplers: number, bufferSource: AudioBufferSourceNode): Array<NumberSampler> {
-  //  https://blog.demofox.org/2017/05/29/when-random-numbers-are-too-random-low-discrepancy-sequences/
-  const buffer = bufferSource.buffer;
-  const channelData = buffer.getChannelData(0);
-  const samplers: Array<NumberSampler> = [];
-  
-  math.normalize01(channelData, channelData);
-
-  const gr = math.goldenRatio();
-  let value = Math.random();
-  
-  for (let i = 0; i < numSamplers; i++) {
-    const sampler = new NumberSampler(channelData);
-    value += gr;
-    value %= 1.0;
-
-    sampler.seek(value);
-    samplers.push(sampler);
-  }
-
-  return samplers;
+  return {left, right, down, up, jump, toggleQuality};
 }

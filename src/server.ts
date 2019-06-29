@@ -19,19 +19,19 @@ app.get('/', (req: Request, res: Response) => {
 app.get('/model/:modelName', (req: Request, res: Response) => {
   const objPath = req.params.modelName.replace(':', '/');
   const filePath = path.join(__dirname, 'res/models/', objPath);
-	sendFileOr404(res, filePath);
+  sendFileOr404(res, filePath);
 });
 
 app.get('/sound/:soundName', (req: Request, res: Response) => {
   const soundPath = req.params.soundName.replace(':', '/');
   const filePath = path.join(__dirname, 'res/sounds/', soundPath);
-	sendFileOr404(res, filePath);
+  sendFileOr404(res, filePath);
 });
 
 app.get('/texture/:textureName', (req: Request, res: Response) => {
   const texturePath = req.params.textureName.replace(':', '/');
   const filePath = path.join(__dirname, 'res/textures/', texturePath);
-	sendFileOr404(res, filePath);
+  sendFileOr404(res, filePath);
 });
 
 http.listen(process.env.PORT || 3000, () => {
@@ -39,11 +39,11 @@ http.listen(process.env.PORT || 3000, () => {
 });
 
 function sendFileOr404(res: Response, filePath: string) {
-	fs.stat(filePath, (err, stat) => {
+  fs.stat(filePath, (err, stat) => {
     if (err === null) {
       res.sendFile(filePath);
     } else {
       res.status(404).send(`Resource "${filePath}" not found.`);
     }
-	})
+  })
 }

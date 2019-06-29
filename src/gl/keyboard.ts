@@ -14,15 +14,19 @@ export const Keys = {
   down: 40
 };
 
+type KeyListenerMap = {
+  [s: number]: {[s: string]: () => void}
+};
+
 export class Keyboard {
   private keyState: {[s: number]: boolean};
-  private keyPressListeners: {
-    [s: number]: {[s: string]: () => void}
-  }
+  private keyPressListeners: KeyListenerMap;
+  private keyReleaseListeners: KeyListenerMap;
 
   constructor() {
     this.keyState = {};
     this.keyPressListeners = {};
+    this.keyReleaseListeners = {};
     this.configureListeners();
   }
 
@@ -39,12 +43,25 @@ export class Keyboard {
   }
 
   addListener(forKey: number, name: string, cb: () => void) {
-    const listeners = this.getListenersMap(forKey);
+    const listeners = this.getPressListenersMap(forKey);
+    listeners[name] = cb;
+  }
+
+  addReleaseListener(forKey: number, name: string, cb: () => void) {
+    const listeners = this.getReleaseListenersMap(forKey);
     listeners[name] = cb;
   }
 
   private triggerKeyPressListeners(forKey: number): void {
-    const listeners = this.keyPressListeners[forKey];
+    this.triggerListeners(this.keyPressListeners, forKey);
+  }
+
+  private triggerKeyReleaseListeners(forKey: number): void {
+    this.triggerListeners(this.keyReleaseListeners, forKey);
+  }
+
+  private triggerListeners(kind: KeyListenerMap, forKey: number): void {
+    const listeners = kind[forKey];
 
     if (listeners === undefined) {
       return;
@@ -57,12 +74,20 @@ export class Keyboard {
     }
   }
 
-  private getListenersMap(forKey: number): {[s: string]: () => void} {
-    const maybeMap = this.keyPressListeners[forKey];
+  private getPressListenersMap(forKey: number): {[s: string]: () => void} {
+    return this.getListenerMap(this.keyPressListeners, forKey);
+  }
+
+  private getReleaseListenersMap(forKey: number): {[s: string]: () => void} {
+    return this.getListenerMap(this.keyReleaseListeners, forKey);
+  }
+
+  private getListenerMap(kind: KeyListenerMap, forKey: number): {[s: string]: () => void} {
+    const maybeMap = kind[forKey];
 
     if (maybeMap === undefined) {
-      this.keyPressListeners[forKey] = {};
-      return this.keyPressListeners[forKey];
+      kind[forKey] = {};
+      return kind[forKey];
     } else {
       return maybeMap;
     }
@@ -71,11 +96,14 @@ export class Keyboard {
   private configureListeners(): void {
     const self = this;
     
-    window.addEventListener('keydown', (e) => {
+    window.addEventListener('keydown', e => {
       self.markDown(e.which);
       self.triggerKeyPressListeners(e.which);
     });
 
-    window.addEventListener('keyup', e => self.markUp(e.which));
+    window.addEventListener('keyup', e => {
+      self.markUp(e.which)
+      self.triggerKeyReleaseListeners(e.which);
+    });
   }
 }
