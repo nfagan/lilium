@@ -1,5 +1,5 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, VoxelGrid, collision, MousePicker, math, types, 
-  Texture2D, parse, makeAttribute, VboDescriptor, RenderContext } from '../src/gl';
+  Texture2D, parse, RenderContext } from '../src/gl';
 import { Result, Stopwatch, loadAudioBuffer, loadImage, loadText, asyncTimeout } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
@@ -136,11 +136,11 @@ function makeGrassQuad(gl: WebGLRenderingContext, prog: Program, grassTileInfo: 
 
   makeGrassTileData(grassTileInfo, translations, rotations, uvs);
 
-  const vboDescriptors: Array<VboDescriptor> = [
-    {name: 'position', attributes: [makeAttribute('a_position', gl.FLOAT, 3)], data: positions},
-    {name: 'translation', attributes: [makeAttribute('a_translation', gl.FLOAT, 3, 1)], data: new Float32Array(translations)},
-    {name: 'rotation', attributes: [makeAttribute('a_rotation', gl.FLOAT, 1, 1)], data: new Float32Array(rotations)},
-    {name: 'uv', attributes: [makeAttribute('a_uv', gl.FLOAT, 2, 1)], data: new Float32Array(uvs)}
+  const vboDescriptors: Array<types.VboDescriptor> = [
+    {name: 'position', attributes: [types.makeAttribute('a_position', gl.FLOAT, 3)], data: positions},
+    {name: 'translation', attributes: [types.makeAttribute('a_translation', gl.FLOAT, 3, 1)], data: new Float32Array(translations)},
+    {name: 'rotation', attributes: [types.makeAttribute('a_rotation', gl.FLOAT, 1, 1)], data: new Float32Array(rotations)},
+    {name: 'uv', attributes: [types.makeAttribute('a_uv', gl.FLOAT, 2, 1)], data: new Float32Array(uvs)}
   ];
 
   const vao = Vao.fromDescriptors(gl, prog, vboDescriptors);
@@ -164,7 +164,7 @@ function makeDrawable(gl: WebGLRenderingContext, prog: Program,
   
   const vboDescriptors = [{
     name: 'position',
-    attributes: [makeAttribute('a_position', gl.FLOAT, 3)],
+    attributes: [types.makeAttribute('a_position', gl.FLOAT, 3)],
     data: positions
   }];
 
@@ -183,9 +183,9 @@ function makeSkySphere(gl: WebGLRenderingContext, prog: Program, data: Float32Ar
   const vboDescriptors = [{
     name: 'data',
     attributes: [
-      makeAttribute('a_position', gl.FLOAT, 3), 
-      makeAttribute('a_uv', gl.FLOAT, 2),
-      makeAttribute('a_normal', gl.FLOAT, 3)
+      types.makeAttribute('a_position', gl.FLOAT, 3), 
+      types.makeAttribute('a_uv', gl.FLOAT, 2),
+      types.makeAttribute('a_normal', gl.FLOAT, 3)
     ],
     data
   }];
@@ -208,15 +208,15 @@ function makeInstancedDrawable(gl: WebGLRenderingContext, prog: Program, positio
 
   const vboDescriptors = [{
     name: 'position',
-    attributes: [makeAttribute('a_position', gl.FLOAT, 3, 0), makeAttribute('a_normal', gl.FLOAT, 3, 0)],
+    attributes: [types.makeAttribute('a_position', gl.FLOAT, 3, 0), types.makeAttribute('a_normal', gl.FLOAT, 3, 0)],
     data: positions
   },{
     name: 'color',
-    attributes: [makeAttribute('a_color', gl.FLOAT, 3, 1)],
+    attributes: [types.makeAttribute('a_color', gl.FLOAT, 3, 1)],
     data: emptyFloatArray
   },{
     name: 'translation',
-    attributes: [makeAttribute('a_translation', gl.FLOAT, 3, 1)],
+    attributes: [types.makeAttribute('a_translation', gl.FLOAT, 3, 1)],
     data: emptyFloatArray
   }];
 
@@ -390,12 +390,6 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
       debug.checkError(instancedProgResult) ||
       debug.checkError(grassProgResult) ||
       debug.checkError(skyProgResult)) {
-    return;
-  }
-
-  const particleRes = await particles.init(gl, audioContext);
-  if (!particleRes) {
-    console.warn('Particle initialization failed.');
     return;
   }
 
@@ -966,7 +960,7 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   drawSky(gl, programs.sky, drawables.skySphere, textures.skyColor, view, proj, voxelGridInfo.grid);
 
   GAME_STATE.airParticleComponent.update(dt, player.aabb);
-  GAME_STATE.airParticleComponent.draw(camera.position, view, proj, sun.position, sun.color);
+  // GAME_STATE.airParticleComponent.draw(camera.position, view, proj, sun.position, sun.color);
 
   // particles.update(gl, player.aabb);
   // particles.render(gl, camera, view, proj, sun);

@@ -240,15 +240,17 @@ export function unwrapResult<T>(res: Result<T, string>): T {
   }
 }
 
+export type DebugDrawFunction = (gl: WebGLRenderingContext) => void;
+
 export type Drawable = {
   vao: Vao,
-  drawFunction: types.DrawFunction,
+  drawFunction: DebugDrawFunction,
   isInstanced: boolean,
   numTriangles?: number,
   numActiveInstances?: number
 };
 
-export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: mat4, drawFunction: types.DrawFunction): void {
+export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: mat4, drawFunction: DebugDrawFunction): void {
   //  Z
   mat4.identity(model);
   mat4.scale(model, model, [0.5, 0.5, 0.5]);
@@ -278,7 +280,7 @@ export function drawAxesPlanes(gl: WebGLRenderingContext, prog: Program, model: 
   drawFunction(gl);
 }
 
-export function drawOrigin(gl: WebGLRenderingContext, prog: Program, model: mat4, drawFunction: types.DrawFunction): void {
+export function drawOrigin(gl: WebGLRenderingContext, prog: Program, model: mat4, drawFunction: DebugDrawFunction): void {
   mat4.identity(model);
   mat4.scale(model, model, [0.25, 0.25, 0.25]);
 
@@ -288,7 +290,7 @@ export function drawOrigin(gl: WebGLRenderingContext, prog: Program, model: mat4
 }
 
 export function drawAabb(gl: WebGLRenderingContext, prog: Program, model: mat4, aabb: math.Aabb,
-  color: vec3 | Array<number>, drawFunction: types.DrawFunction): void {
+  color: vec3 | Array<number>, drawFunction: DebugDrawFunction): void {
   const w = aabb.width();
   const h = aabb.height();
   const d = aabb.depth();
@@ -320,7 +322,7 @@ export function makeFollowCamera(gl: WebGLRenderingContext): FollowCamera {
 }
 
 export function drawAt(gl: WebGLRenderingContext, prog: Program, model: mat4, pos: types.Real3, sz: types.Real3 | number,
-  color: types.Real3, drawFunction: types.DrawFunction): void {
+  color: types.Real3, drawFunction: DebugDrawFunction): void {
   mat4.identity(model);
   mat4.translate(model, model, pos as vec3);
   if (typeof sz === 'number') {

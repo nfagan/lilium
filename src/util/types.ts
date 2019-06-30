@@ -9,3 +9,11 @@ export type PrimitiveTypedArray =
   Int32Array;
 
 export type BuiltinRealArray = PrimitiveTypedArray | Array<number>;
+
+export interface BasicErr {
+  message: string
+};
+
+export function isBasicErr(err: any): err is BasicErr {
+  return typeof err === 'object' && err.hasOwnProperty('message') && typeof err.message === 'string';
+}

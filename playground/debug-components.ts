@@ -1,13 +1,14 @@
 import * as wgl from '../src/gl';
 import { PlayerMovement, Player, WorldGrid, GrassTile, 
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
-  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, ImageQuality, getDpr } from '../src/game';
-import { Stopwatch, loadText, asyncTimeout } from '../src/util';
-import { mat4 } from 'gl-matrix';
+  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, ImageQuality, getDpr, FatalError } from '../src/game';
+import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage } from '../src/util';
+import { mat4, vec3 } from 'gl-matrix';
 
 type PlayerDrawable = {
   drawable: wgl.types.Drawable,
-  program: wgl.Program
+  program: wgl.Program,
+  material: wgl.Material
 };
 
 type Game = {
@@ -74,27 +75,27 @@ async function makePlayerDrawable(renderContext: wgl.RenderContext): Promise<Pla
   const model = await asyncTimeout(() => loadText('/model/character2:character3.obj'), 5 * 1e3);
   const parse = new wgl.parse.Obj(model);
 
+  const makeFloatAttribute = wgl.types.makeFloat3Attribute;
+  const makeVboDescriptor = wgl.types.makeAnonymousVboDescriptor;
+  const makeEboDescriptor = wgl.types.makeAnonymousEboDescriptor;
+
   const vboDescriptors = [
-    wgl.types.makeVboDescriptor('position', [wgl.types.makeAttribute('a_position', gl.FLOAT, 3)], new Float32Array(parse.positions)),
-    wgl.types.makeVboDescriptor('normal', [wgl.types.makeAttribute('a_normal', gl.FLOAT, 3)], new Float32Array(parse.normals))
+    makeVboDescriptor([makeFloatAttribute(gl, 'a_position')], new Float32Array(parse.positions)),
+    makeVboDescriptor([makeFloatAttribute(gl, 'a_normal')], new Float32Array(parse.normals)),
   ];
-  const eboDescriptor = wgl.types.makeEboDescriptor('indices', new Uint16Array(parse.positionIndices));
 
-  const vertSchema = new wgl.types.ShaderSchema();
-  vertSchema.addAttributesFromVboDescriptors(gl, vboDescriptors);
-  vertSchema.addModelViewProjectionUniforms();
-  vertSchema.body.push(() => 'gl_Position = projection * view * model * vec4(a_position, 1.0);');
+  const eboDescriptor = makeEboDescriptor(new Uint16Array(parse.positionIndices));
 
-  const fragSchema = new wgl.types.ShaderSchema();
-  fragSchema.body.push(() => 'gl_FragColor = vec4(1.0);');
+  const mat = wgl.Material.Phong();
+  mat.setUniformProperty('modelColor', 1);
 
-  const prog = wgl.Program.fromSchemas(gl, vertSchema, fragSchema);
+  const prog = renderContext.requireProgram(mat);
   const vao = wgl.Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
 
   const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
   drawable.count = parse.positionIndices.length;
 
-  return {program: prog, drawable};
+  return {program: prog, drawable, material: mat};
 }
 
 function makeController(keyboard: wgl.Keyboard): Controller {
@@ -114,18 +115,23 @@ function updateCamera(dt: number, camera: wgl.FollowCamera, playerAabb: wgl.math
 }
 
 function drawPlayer(rc: wgl.RenderContext, playerDrawable: PlayerDrawable, 
-  playerAabb: wgl.math.Aabb, playerMovement: PlayerMovement, view: mat4, proj: mat4): void {
+  playerAabb: wgl.math.Aabb, playerMovement: PlayerMovement, camera: wgl.ICamera, view: mat4, proj: mat4, sunPos: wgl.types.Real3, sunColor: wgl.types.Real3): void {
   const model = mat4.create();
 
-  const dirVec = [0, 0, 0];
-  playerMovement.getDirection(dirVec);
-
-  mat4.translate(model, model, [playerAabb.midX(), playerAabb.minY, playerAabb.midZ()]);
-  mat4.scale(model, model, [0.4, 0.4, 0.4]);
+  // mat4.translate(model, model, [playerAabb.midX(), playerAabb.minY, playerAabb.midZ()]);
+  // mat4.scale(model, model, [0.4, 0.4, 0.4]);
 
   rc.useProgram(playerDrawable.program);
   wgl.debug.setViewProjection(playerDrawable.program, view, proj);
   playerDrawable.program.setMat4('model', model);
+
+  playerDrawable.program.setVec3('camera_position', camera.position);
+  playerDrawable.program.setVec3('point_light_positions[0]', sunPos);
+  playerDrawable.program.setVec3('point_light_colors[0]', sunColor);
+
+  playerDrawable.material.setUniforms(playerDrawable.program);
+
+  // playerDrawable.program.set3f('model_color', 1, 0.25, 1);
 
   rc.bindVao(playerDrawable.drawable.vao);
   playerDrawable.drawable.draw();
@@ -166,14 +172,20 @@ function gameLoop(renderContext: wgl.RenderContext, audioContext: AudioContext, 
   game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
   game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
   
-  drawPlayer(renderContext, game.playerDrawable, game.player.aabb, game.playerMovement, view, proj);
+  drawPlayer(renderContext, game.playerDrawable,game.player.aabb, game.playerMovement, 
+    camera, view, proj, sunPos, sunColor);
 
   frameTimer.reset();
+}
+
+function fatalError(cause: string): void {
+  const err = new FatalError(cause, document.body);
 }
 
 export async function main() {
   const glResult = wgl.debug.createCanvasAndContext(document.body);
   if (wgl.debug.checkError(glResult)) {
+    fatalError('Failed to initialize rendering context: ' + glResult.unwrapErr());
     return;
   }
 
@@ -185,7 +197,7 @@ export async function main() {
   try {
     audioContext = new (window.AudioContext || (<any>window).webkitAudioContext)();
   } catch (err) {
-    console.error('Failed to initialize audio context.');
+    fatalError('Failed to initialize audio context: ' + tryExtractErrorMessage(err));
     return;
   }
 
@@ -216,7 +228,14 @@ export async function main() {
   const player = new Player(playerDims);
   const playerMovement = new PlayerMovement(worldGrid.voxelGrid);
 
-  const playerDrawable = await makePlayerDrawable(renderContext);
+  let playerDrawable: PlayerDrawable = null;
+
+  try {
+    playerDrawable = await makePlayerDrawable(renderContext);
+  } catch (err) {
+    fatalError('Failed to load player model: ' + tryExtractErrorMessage(err));
+    return;
+  }
 
   player.aabb.moveTo3(8, 8, 8);
 

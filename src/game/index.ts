@@ -10,3 +10,4 @@ export * from './air-particles';
 export * from './world-grid';
 export * from './controls';
 export * from './quality';
+export * from './fatal-error';

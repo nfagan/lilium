@@ -1,7 +1,7 @@
 import { Shader } from './shader';
 import * as types from './types';
 import { mat4 } from 'gl-matrix';
-import { shaderBuilder } from '.';
+import { shaderBuilder, Texture2D } from '.';
 
 type StringMap<T> = {
   [s: string]: T
@@ -62,6 +62,27 @@ export class Program {
     const locValidator = (loc: WebGLUniformLocation) => loc !== null;
 
     return this.maybeGetCachedLocation(this.uniformLocations, 'uniform', name, locGetter, locValidator, forceQuery);
+  }
+
+  setUniform(uniform: types.UniformValue): void {
+    switch (uniform.type) {
+      case 'float':
+        this.set1f(uniform.identifier, uniform.value as number);
+        break;
+      case 'sampler2D': {
+        const tex = uniform.value as Texture2D;
+        this.set1i(uniform.identifier, tex.index);
+        break;
+      }
+      case 'vec3':
+        this.setVec3(uniform.identifier, uniform.value as types.Real3);
+        break;
+      case 'mat4':
+        this.setMat4(uniform.identifier, uniform.value as mat4);
+        break;
+      default:
+        console.warn(`No uniform-setting function for type: ${uniform.type}.`);
+    }
   }
 
   setMat4(name: string, value: mat4): void {

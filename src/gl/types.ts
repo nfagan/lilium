@@ -1,7 +1,180 @@
 import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
 import { BuiltinRealArray, PrimitiveTypedArray } from '../util';
-import { Vao, RenderContext } from '.';
-import { Program } from '.';
+import { Vao, RenderContext, types, Program, Texture2D } from '.';
+
+export namespace typeTest {
+  export function isNumber(a: any): a is number {
+    return typeof a === 'number';
+  }
+  export function isArray(a: any): a is Array<any> {
+    return Array.isArray(a);
+  }
+  export function isArrayOfNumber(a: any): a is Array<number> {
+    return isArray(a) && (a.length === 0 || isNumber(a[0]));
+  }
+  export function isTexture2D(a: any): a is Texture2D {
+    return a instanceof Texture2D;
+  }
+  export function isFloat32Array(a: any): a is Float32Array {
+    return a instanceof Float32Array;
+  }
+}
+
+export const ShaderLimits = {
+  maxNumUniformDirectionalLights: 3,
+  maxNumUniformPointLights: 3
+};
+
+type ShaderAttributeMap = {
+  position: string,
+  normal: string,
+  uv: string
+};
+
+type ShaderVaryingMap = {
+  position: string,
+  normal: string,
+  uv: string,
+};
+
+type ShaderUniformMap = {
+  model: string,
+  view: string,
+  projection: string,
+  cameraPosition: string,
+  directionalLightColors: string,
+  directionalLightPositions: string,
+  pointLightColors: string,
+  pointLightPositions: string,
+  modelColor: string,
+  ambientConstant: string,
+  diffuseConstant: string,
+  specularConstant: string,
+  specularPower: string
+};
+
+export type ShaderTemporaryMap = {
+  worldPosition: GLSLVariable
+  normal: GLSLVariable,
+  normalToCamera: GLSLVariable,
+  lightContribution: GLSLVariable,
+  ambientConstant: GLSLVariable,
+  diffuseConstant: GLSLVariable,
+  specularConstant: GLSLVariable,
+  specularPower: GLSLVariable,
+  modelColor: GLSLVariable
+};
+
+export type ShaderIdentifierMap = {
+  attributes: ShaderAttributeMap,
+  varyings: ShaderVaryingMap,
+  uniforms: ShaderUniformMap,
+  temporaries: ShaderTemporaryMap,
+}
+
+export const DefaultShaderIdentifiers: ShaderIdentifierMap = {
+  attributes: {
+    position: 'a_position',
+    normal: 'a_normal',
+    uv: 'a_uv'
+  },
+  varyings: {
+    position: 'v_position',
+    normal: 'v_normal',
+    uv: 'v_uv',
+  },
+  uniforms: {
+    model: 'model',
+    view: 'view',
+    projection: 'projection',
+    cameraPosition: 'camera_position',
+    directionalLightColors: 'directional_light_colors',
+    directionalLightPositions: 'directional_light_positions',
+    pointLightColors: 'point_light_colors',
+    pointLightPositions: 'point_light_positions',
+    modelColor: 'model_color',
+    ambientConstant: 'ambient_constant',
+    diffuseConstant: 'diffuse_constant',
+    specularConstant: 'specular_constant',
+    specularPower: 'specular_power',
+  },
+  temporaries: {
+    worldPosition: {identifier: 'world_position', type: 'vec3'},
+    normal: {identifier: 'normal', type: 'vec3'},
+    normalToCamera: {identifier: 'normal_to_camera', type: 'vec3'},
+    lightContribution: {identifier: 'light_contribution', type: 'vec3'},
+    ambientConstant: {identifier: 'ka', type: 'float'},
+    diffuseConstant: {identifier: 'kd', type: 'float'},
+    specularConstant: {identifier: 'ks', type: 'float'},
+    specularPower: {identifier: 'spec_pow', type: 'float'},
+    modelColor: {identifier: 'use_color', type: 'vec3'}
+  }
+};
+
+export const RequiredPhongLightingTemporaries: Array<keyof ShaderTemporaryMap> = [
+  'ambientConstant', 'diffuseConstant', 'specularConstant', 'specularPower', 'modelColor'
+];
+
+export const RequiredNoLightingTemporaries: Array<keyof ShaderTemporaryMap> = ['modelColor'];
+
+export type LightingModel = 'phong' | 'none';
+
+export type UniformSettable = number | FloatN | Texture2D;
+
+export class UniformValue {
+  private typeChanged: boolean;
+
+  identifier: string;
+  value: UniformSettable;
+  type: GLSLTypes;
+  channels?: number;
+
+  constructor(identifier: string, value: UniformSettable, type: GLSLTypes, channels?: number) {
+    this.identifier = identifier;
+    this.value = value;
+    this.type = type;
+    this.channels = channels;
+    this.typeChanged = true;
+  }
+
+  isNewType(): boolean {
+    return this.typeChanged;
+  }
+
+  clearIsNewType(): void {
+    this.typeChanged = false;
+  }
+
+  set(to: UniformSettable, numChannels?: number): void {
+    const newType = glslTypeFromUniformSettableValue(to);
+    this.typeChanged = this.type !== newType;
+    this.value = to;
+    this.type = newType;
+
+    if (numChannels !== undefined) {
+      this.channels = numChannels;
+    }
+  }
+};
+
+export function makeUniformValue(name: string, value: UniformSettable, type: GLSLTypes, channels?: number): UniformValue {
+  return new UniformValue(name, value, type, channels);
+}
+
+export function makeUniformFloatValue(name: string, value: number): UniformValue {
+  return new UniformValue(name, value, 'float');
+}
+
+export function makeUniformFloat3Value(name: string, value: Float3): UniformValue {
+  return new UniformValue(name, value, 'vec3');
+}
+
+export type MaterialDescriptor = {
+  receivesShadow: boolean,
+  castsShadow: boolean,
+  lightingModel: LightingModel,
+  uniforms: {[key: string]: UniformValue}
+};
 
 export type AttributeDescriptor = {
   name: string,
@@ -21,7 +194,10 @@ export type Real3 = Real4 | vec3;
 export type Real2 = Real3 | vec2;
 export type RealN = Real2;
 
-export type LightingModels = 'phong';
+export type Float4 = BuiltinRealArray | vec4 | mat4;
+export type Float3 = Float4 | vec3;
+export type Float2 = Float3 | vec2;
+export type FloatN = Float2;
 
 export type GLSLPrecision = 'lowp' | 'mediump' | 'highp';
 export type GLSLTypes = 'float' | 'vec2' | 'vec3' | 'vec4' | 'mat2' | 'mat3' | 'mat4' | 'sampler2D';
@@ -30,23 +206,59 @@ export type GLSLVariable = {
   type: GLSLTypes
 };
 
+export function makeGLSLVariable(identifier: string, type: GLSLTypes): GLSLVariable {
+  return {identifier, type};
+}
+
 export function glslTypeFromAttributeDescriptor(gl: WebGLRenderingContext, attr: AttributeDescriptor): GLSLTypes {
   if (attr.type === gl.FLOAT) {
-    switch (attr.size) {
-      case 1:
-        return 'float';
-      case 2:
-        return 'vec2';
-      case 3:
-        return 'vec3';
-      case 4:
-        return 'vec4';
-      default:
-        console.warn(`Unsupported size: ${attr.size}`);
-        return 'float';
-    }
+    return glslFloatTypeFromNumComponents(attr.size);
   } else {
     console.warn(`Unsupported type: ${attr.type}`);
+    return 'float';
+  }
+}
+
+export function glslFloatTypeFromNumComponents(numComponents: number): GLSLTypes {
+  switch (numComponents) {
+    case 1:
+      return 'float';
+    case 2:
+      return 'vec2';
+    case 3:
+      return 'vec3';
+    case 4:
+      return 'vec4';
+    default:
+      console.warn(`Unsupported size: ${numComponents}`);
+      return 'float';
+  }
+}
+
+export function glslTypeFromUniformSettableValue(value: UniformSettable): GLSLTypes {
+  if (typeTest.isNumber(value)) {
+    return 'float'
+  } else if (typeTest.isTexture2D(value)) {
+    return 'sampler2D';
+  } else if (typeTest.isArrayOfNumber(value) || typeTest.isFloat32Array(value)) {
+    if (value.length === 0) {
+      console.error('Empty array ???');
+      return 'float';
+    } else if (value.length === 1) {
+      return 'float';
+    } else if (value.length === 2) {
+      return 'vec2';
+    } else if (value.length === 3) {
+      return 'vec3';
+    } else if (value.length === 4) {
+      return 'vec4';
+    } else if (value.length === 9) {
+      return 'mat3';
+    } else {
+      return 'mat4';
+    }
+  } else {
+    console.error('No known GLSL type for value: ' + value);
     return 'float';
   }
 }
@@ -100,8 +312,25 @@ export function makeAttribute(name: string, type: number, size: number, divisor?
   return {name, type, size, divisor};
 }
 
+export function makeFloatAttribute(gl: WebGLRenderingContext, name: string, size: number, divisor?: number): AttributeDescriptor {
+  return makeAttribute(name, gl.FLOAT, size, divisor);
+}
+
+export function makeFloat3Attribute(gl: WebGLRenderingContext, name: string, divisor?: number): AttributeDescriptor {
+  return makeFloatAttribute(gl, name, 3, divisor);
+}
+
 export function makeVboDescriptor(name: string, attributes: Array<AttributeDescriptor>, data: PrimitiveTypedArray, drawType?: number): VboDescriptor {
   return {name, attributes, data, drawType};
+}
+
+export function makeAnonymousVboDescriptor(attributes: Array<AttributeDescriptor>, data: PrimitiveTypedArray, drawType?: number): VboDescriptor {
+  let useName = attributes.length === 0 ? 'a' : attributes[0].name;
+  return {name: useName, attributes, data, drawType};
+}
+
+export function makeAnonymousEboDescriptor(indices: Uint16Array): EboDescriptor {
+  return {name: 'indices', indices};
 }
 
 export function makeEboDescriptor(name: string, indices: Uint16Array): EboDescriptor {
@@ -175,15 +404,30 @@ export class ShaderSchema {
     this.body = [];
   }
 
-  addUniform(identifier: string, type: GLSLTypes): ShaderSchema {
-    this.uniforms.push({identifier, type});
-    return this;
+  private hasIdentifierLinearSearch(name: string, inArr: Array<GLSLVariable>): boolean {
+    for (let i = 0; i < inArr.length; i++) {
+      if (inArr[i].identifier === name) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
-  addModelViewProjectionUniforms(): ShaderSchema {
-    this.addUniform('model', 'mat4');
-    this.addUniform('view', 'mat4');
-    this.addUniform('projection', 'mat4');
+  hasVarying(name: string): boolean {
+    return this.hasIdentifierLinearSearch(name, this.varyings);
+  }
+
+  hasUniform(name: string): boolean {
+    return this.hasIdentifierLinearSearch(name, this.uniforms);
+  }
+
+  hasAttribute(name: string): boolean {
+    return this.hasIdentifierLinearSearch(name, this.attributes);
+  }
+
+  addUniform(identifier: string, type: GLSLTypes): ShaderSchema {
+    this.uniforms.push({identifier, type});
     return this;
   }
 
@@ -194,6 +438,27 @@ export class ShaderSchema {
 
   addAttribute(identifier: string, type: GLSLTypes): ShaderSchema {
     this.attributes.push({identifier, type});
+    return this;
+  }
+
+  requireAttribute(identifier: string, type: GLSLTypes): ShaderSchema {
+    if (!this.hasAttribute(identifier)) {
+      this.addAttribute(identifier, type);
+    }
+    return this;
+  }
+
+  requireVarying(identifier: string, type: GLSLTypes): ShaderSchema {
+    if (!this.hasVarying(identifier)) {
+      this.addVarying(identifier, type);
+    }
+    return this;
+  }
+
+  requireUniform(identifier: string, type: GLSLTypes): ShaderSchema {
+    if (!this.hasUniform(identifier)) {
+      this.addUniform(identifier, type);
+    }
     return this;
   }
 
@@ -213,7 +478,6 @@ export class ShaderSchema {
     for (let i = 0; i < descriptors.length; i++) {
       this.addAttributesFromVboDescriptor(gl, descriptors[i]);
     }
-    
     return this;
   }
 };
