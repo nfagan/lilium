@@ -64,11 +64,14 @@ export class ProgramBuilder {
       noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
 
     } else {
-      console.warn(`Unsupported lighting model: "${forMaterial.descriptor.lightingModel}". Using "phong".`);
+      console.warn(`Unsupported lighting model: "${forMaterial.descriptor.lightingModel}". Using "none".`);
+      noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);
+      noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
+
     }
 
-    console.log(shaderSchemaToString(vertSchema));
-    console.log(shaderSchemaToString(fragSchema));
+    // console.log(shaderSchemaToString(vertSchema));
+    // console.log(shaderSchemaToString(fragSchema));
 
     return Program.fromSchemas(this.gl, vertSchema, fragSchema);
   }

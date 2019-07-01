@@ -1,11 +1,13 @@
 import { types, Program } from '.';
 
 export class Material {
+  readonly id: number;
   readonly activeUniforms: Array<string>;
   readonly descriptor: types.MaterialDescriptor;
   private schemaDidChange: boolean;
 
   private constructor(descriptor: types.MaterialDescriptor) {
+    this.id = Material.ID++;
     this.descriptor = descriptor;
     this.activeUniforms = this.getActiveUniforms();
     this.schemaDidChange = true;
@@ -78,6 +80,10 @@ export class Material {
 
   clearIsNewSchema(): void {
     this.schemaDidChange = false;
+
+    for (let i = 0; i < this.activeUniforms.length; i++) {
+      this.descriptor.uniforms[this.activeUniforms[i]].clearIsNewType();
+    }
   }
 
   private static requireIdentifiers(identifiers: types.ShaderIdentifierMap): types.ShaderIdentifierMap {
@@ -87,6 +93,8 @@ export class Material {
       return identifiers;
     }
   } 
+
+  private static ID: number = 0;
 
   static Empty(identifiers?: types.ShaderIdentifierMap): Material {
     identifiers = Material.requireIdentifiers(identifiers);

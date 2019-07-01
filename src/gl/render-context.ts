@@ -1,14 +1,11 @@
 import { Vao } from './vao';
 import { Program } from './program';
-import { ProgramBuilder } from './shader-builder';
-import { Material } from './material';
 
 export class RenderContext {
   gl: WebGLRenderingContext;
   extInstancedArrays: ANGLE_instanced_arrays;
   extOesVao: OES_vertex_array_object;
-  
-  private programBuilder: ProgramBuilder;
+
   private boundVao: Vao;
   private boundProgram: Program;
 
@@ -17,7 +14,6 @@ export class RenderContext {
     this.getExtensions(gl);
     this.boundVao = null;
     this.boundProgram = null;
-    this.programBuilder = new ProgramBuilder(gl);
   }
 
   bindVao(vao: Vao): boolean {
@@ -28,10 +24,6 @@ export class RenderContext {
     } else {
       return false;
     }
-  }
-
-  requireProgram(forMaterial: Material): Program {
-    return this.programBuilder.requireProgram(forMaterial);
   }
 
   useProgram(program: Program): boolean {

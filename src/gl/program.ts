@@ -3,17 +3,13 @@ import * as types from './types';
 import { mat4 } from 'gl-matrix';
 import { shaderBuilder, Texture2D } from '.';
 
-type StringMap<T> = {
-  [s: string]: T
-};
-
 export class Program {
   private static ID: number = 0;
 
   private gl: WebGLRenderingContext;
   private program: WebGLProgram = null;
-  private attributeLocations: StringMap<number>;
-  private uniformLocations: StringMap<WebGLUniformLocation>;
+  private attributeLocations: types.StringMap<number>;
+  private uniformLocations: types.StringMap<WebGLUniformLocation>;
 
   readonly id: number;
 
@@ -24,7 +20,7 @@ export class Program {
     this.id = Program.ID++;
   }
 
-  private maybeGetCachedLocation<T>(map: StringMap<T>, kind: string, name: string, 
+  private maybeGetCachedLocation<T>(map: types.StringMap<T>, kind: string, name: string, 
     locGetter: () => T, locValidator: (v: T) => boolean, forceQuery: boolean): T {
     if (this.program === null) {
       throw new Error(`Cannot get ${kind} from invalid or unattached program.`);
@@ -64,25 +60,34 @@ export class Program {
     return this.maybeGetCachedLocation(this.uniformLocations, 'uniform', name, locGetter, locValidator, forceQuery);
   }
 
-  setUniform(uniform: types.UniformValue): void {
-    switch (uniform.type) {
+  private setUniformFromComponents(identifier: string, type: types.GLSLTypes, value: types.UniformSettable): void {
+    switch (type) {
       case 'float':
-        this.set1f(uniform.identifier, uniform.value as number);
+        this.set1f(identifier, value as number);
         break;
       case 'sampler2D': {
-        const tex = uniform.value as Texture2D;
-        this.set1i(uniform.identifier, tex.index);
+        const tex = value as Texture2D;
+        this.set1i(identifier, tex.index);
         break;
       }
       case 'vec3':
-        this.setVec3(uniform.identifier, uniform.value as types.Real3);
+        this.setVec3(identifier, value as types.Real3);
         break;
       case 'mat4':
-        this.setMat4(uniform.identifier, uniform.value as mat4);
+        this.setMat4(identifier, value as mat4);
         break;
       default:
-        console.warn(`No uniform-setting function for type: ${uniform.type}.`);
+        console.warn(`No uniform-setting function for type: ${type}.`);
     }
+  }
+
+  setUniform(uniform: types.UniformValue): void {
+    this.setUniformFromComponents(uniform.identifier, uniform.type, uniform.value);
+  }
+
+  setArrayUniform(uniform: types.UniformValue, atIndex: number): void {
+    const identifier = `${uniform.identifier}[${atIndex}]`;
+    this.setUniformFromComponents(identifier, uniform.type, uniform.value);
   }
 
   setMat4(name: string, value: mat4): void {

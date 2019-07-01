@@ -14,10 +14,14 @@ export * from './shader';
 export * from './program';
 export * from './follow-camera';
 export * from './camera';
+export * from './lights';
 export * from './material';
+export * from './model';
 export * from './vao';
 export * from './texture';
 export * from './render-context';
+export * from './renderer';
+export * from './scene';
 
 export { 
   collision,

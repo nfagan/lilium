@@ -2,6 +2,10 @@ import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
 import { BuiltinRealArray, PrimitiveTypedArray } from '../util';
 import { Vao, RenderContext, types, Program, Texture2D } from '.';
 
+export type StringMap<T> = {
+  [k: string]: T
+};
+
 export namespace typeTest {
   export function isNumber(a: any): a is number {
     return typeof a === 'number';
@@ -118,6 +122,10 @@ export const RequiredPhongLightingTemporaries: Array<keyof ShaderTemporaryMap> =
 export const RequiredNoLightingTemporaries: Array<keyof ShaderTemporaryMap> = ['modelColor'];
 
 export type LightingModel = 'phong' | 'none';
+export const enum Lights {
+  Directional,
+  Point
+};
 
 export type UniformSettable = number | FloatN | Texture2D;
 
@@ -128,6 +136,7 @@ export class UniformValue {
   value: UniformSettable;
   type: GLSLTypes;
   channels?: number;
+  allowNewType: boolean;
 
   constructor(identifier: string, value: UniformSettable, type: GLSLTypes, channels?: number) {
     this.identifier = identifier;
@@ -135,6 +144,7 @@ export class UniformValue {
     this.type = type;
     this.channels = channels;
     this.typeChanged = true;
+    this.allowNewType = true;
   }
 
   isNewType(): boolean {
@@ -145,9 +155,21 @@ export class UniformValue {
     this.typeChanged = false;
   }
 
+  disallowNewType(): UniformValue {
+    this.allowNewType = false;
+    return this;
+  }
+
   set(to: UniformSettable, numChannels?: number): void {
     const newType = glslTypeFromUniformSettableValue(to);
-    this.typeChanged = this.type !== newType;
+    const isNewType = this.type !== newType;
+
+    if (isNewType && !this.allowNewType) {
+      console.error(`Cannot overwrite value of original type "${this.type}" with value of new type "${newType}".`);
+      return;
+    }
+
+    this.typeChanged = isNewType;
     this.value = to;
     this.type = newType;
 
