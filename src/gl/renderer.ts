@@ -30,13 +30,7 @@ export class Renderer {
       const model = models[i];
       const material = model.material;
       const drawComponent = model.drawable;
-
-      let progForMaterial = this.programsByMaterialId.get(material.id);
-
-      if (progForMaterial === undefined || material.isNewSchema()) {
-        progForMaterial = this.programBuilder.requireProgram(material);
-        this.programsByMaterialId.set(material.id, progForMaterial);
-      }
+      const progForMaterial = this.requireProgram(material);
 
       renderContext.useProgram(progForMaterial);
 
@@ -59,6 +53,13 @@ export class Renderer {
   }
 
   requireProgram(forMaterial: Material): Program {
-    return this.programBuilder.requireProgram(forMaterial);
+    let progForMaterial = this.programsByMaterialId.get(forMaterial.id);
+
+    if (progForMaterial === undefined) {
+      progForMaterial = this.programBuilder.requireProgram(forMaterial);
+      this.programsByMaterialId.set(forMaterial.id, progForMaterial);
+    }
+
+    return progForMaterial;
   }
 }

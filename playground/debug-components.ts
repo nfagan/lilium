@@ -180,11 +180,11 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const sunPos = game.sunPosition;
   const sunColor = game.sunColor;
 
-  // game.grassComponent.update(dt, playerAabb);
-  // game.airParticleComponent.update(dt, playerAabb);
+  game.grassComponent.update(dt, playerAabb);
+  game.airParticleComponent.update(dt, playerAabb);
 
-  // game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
-  // game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
+  game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
+  game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
 
   renderer.render(game.scene, view, proj);
 
