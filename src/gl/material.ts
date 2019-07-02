@@ -133,6 +133,19 @@ export class Material {
     });
   }
 
+  static NoLight(identifiers?: types.ShaderIdentifierMap): Material {
+    identifiers = Material.requireIdentifiers(identifiers);
+
+    return new Material({
+      receivesShadow: true,
+      castsShadow: true,
+      lightingModel: 'none',
+      uniforms: {
+        modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])
+      }
+    });
+  }
+
   static Physical(identifiers?: types.ShaderIdentifierMap): Material {
     identifiers = Material.requireIdentifiers(identifiers);
 
@@ -141,6 +154,7 @@ export class Material {
       castsShadow: true,
       lightingModel: 'physical',
       uniforms: {
+        ambientConstant: types.makeUniformFloatValue(identifiers.uniforms.ambientConstant, 0.1),
         roughness: types.makeUniformFloatValue(identifiers.uniforms.roughness, 0.5),
         metallic: types.makeUniformFloatValue(identifiers.uniforms.metallic, 0.5),
         modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])

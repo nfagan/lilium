@@ -81,8 +81,8 @@ export class ProgramBuilder {
         noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);
         noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
     }
-    // console.log(shaderSchemaToString(vertSchema));
-    // console.log(shaderSchemaToString(fragSchema));
+    console.log(shaderSchemaToString(vertSchema));
+    console.log(shaderSchemaToString(fragSchema));
 
     return Program.fromSchemas(this.gl, vertSchema, fragSchema);
   }

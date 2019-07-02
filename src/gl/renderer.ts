@@ -40,13 +40,15 @@ export class Renderer {
 
       renderContext.useProgram(progForMaterial);
 
-      for (let j = 0; j < lights.length; j++) {
-        lights[j].setUniforms(progForMaterial);
+      if (material.descriptor.lightingModel !== 'none') {
+        for (let j = 0; j < lights.length; j++) {
+          lights[j].setUniforms(progForMaterial);
+        }
       }
 
+      progForMaterial.setMat4(identifiers.uniforms.model, model.transform.matrix);
       progForMaterial.setMat4(identifiers.uniforms.view, view);
       progForMaterial.setMat4(identifiers.uniforms.projection, proj);
-      progForMaterial.setMat4(identifiers.uniforms.model, model.transform.matrix);
 
       material.setUniforms(progForMaterial);
       material.clearIsNewSchema();

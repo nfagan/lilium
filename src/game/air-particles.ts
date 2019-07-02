@@ -274,10 +274,6 @@ export class AirParticles {
     debug.setViewProjection(prog, view, proj);
     renderContext.bindVao(drawable.vao);
 
-    // drawable.vao.bind();
-    // prog.use();
-    // console.warn('Using manual override.');
-
     const sz = this.particleScale;
 
     prog.set3f('scaling', sz, sz, sz);

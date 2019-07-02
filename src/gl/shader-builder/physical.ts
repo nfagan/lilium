@@ -30,8 +30,10 @@ function makePhysicalFragmentRequirements(identifiers: types.ShaderIdentifierMap
       normal: temporaries.normal,
       normalToCamera: temporaries.normalToCamera,
       lightContribution: temporaries.lightContribution,
+      ambientConstant: temporaries.ambientConstant
     },
     uniforms: {
+      ambientConstant: types.makeGLSLVariable(uniforms.ambientConstant, 'float'),
       roughness: types.makeGLSLVariable(uniforms.roughness, 'float'),
       metallic: types.makeGLSLVariable(uniforms.metallic, 'float'),
       directionalLightPositions: types.makeGLSLVariable(uniforms.directionalLightPositions, 'vec3', true, maxDirLights),
@@ -199,12 +201,21 @@ function physicalDirectionalLightLoop(identifiers: types.ShaderIdentifierMap): s
 function physicalFragmentLightingBody(identifiers: types.ShaderIdentifierMap): string {
   const temporaries = identifiers.temporaries;
   const varyings = identifiers.varyings;
+  const lightContrib = temporaries.lightContribution.identifier;
+
+  // `
+	// 		${resType} ${finalColor} = ${ambientName} + ${loName};
+	// 		${finalColor} = ${finalColor} / (${finalColor} + ${resType}(1.0));
+	// 		${finalColor} = pow(${finalColor}, ${resType}(1.0/2.2));`
 
   return `
   ${temporaries.normal.identifier} = normalize(${varyings.normal});
   ${physicalPointLightLoop(identifiers)}
   ${physicalDirectionalLightLoop(identifiers)}
-  gl_FragColor = vec4(${temporaries.lightContribution.identifier}, 1.0);`;
+  ${lightContrib} = ${lightContrib} + ${temporaries.ambientConstant.identifier} * ${temporaries.modelColor.identifier};
+  ${lightContrib} = ${lightContrib} / (${lightContrib} + vec3(1.0));
+  ${lightContrib} = pow(${lightContrib}, vec3(1.0/2.2));
+  gl_FragColor = vec4(${lightContrib}, 1.0);`;
 }
 
 export function applyPhysicalVertexPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {

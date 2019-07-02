@@ -66,6 +66,30 @@ function makeWorldGrid(): WorldGrid {
   return worldGrid;
 }
 
+function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lightPos: wgl.types.Real3, lightColor: wgl.types.Real3): wgl.Model {
+  const makeFloatAttribute = wgl.types.makeFloat3Attribute;
+  const makeVboDescriptor = wgl.types.makeAnonymousVboDescriptor;
+  const makeEboDescriptor = wgl.types.makeAnonymousEboDescriptor;
+  const gl = renderContext.gl;
+
+  const cubePositions = wgl.geometry.cubeInterleavedPositionsNormals();
+  const vboDescriptor = makeVboDescriptor([makeFloatAttribute(gl, 'a_position'), makeFloatAttribute(gl, 'a_normal')], cubePositions);
+  const eboDescriptor = makeEboDescriptor(wgl.geometry.cubeIndices());
+
+  const mat = wgl.Material.NoLight();
+  mat.setUniformProperty('modelColor', lightColor);
+
+  const prog = renderer.requireProgram(mat);
+  const vao = wgl.Vao.fromDescriptors(gl, prog, [vboDescriptor], eboDescriptor);
+
+  const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
+  drawable.count = eboDescriptor.indices.length;
+
+  const model = new wgl.Model(drawable, mat);
+  model.transform.translate(lightPos);
+  return model;
+}
+
 async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
   const modelUrl = '/model/character2:character3.obj';
   const gl = renderContext.gl;
@@ -90,9 +114,9 @@ async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.Ren
   const eboDescriptor = makeEboDescriptor(wgl.geometry.cubeIndices());
 
   const mat = wgl.Material.Physical();
-  mat.setUniformProperty('modelColor', 0.2);
-  mat.setUniformProperty('metallic', 1);
-  mat.setUniformProperty('roughness', 0.1);
+  mat.setUniformProperty('modelColor', [1, 1, 0.2]);
+  mat.setUniformProperty('metallic', 3);
+  mat.setUniformProperty('roughness', 1);
 
   const prog = renderer.requireProgram(mat);
   const vao = wgl.Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
@@ -145,7 +169,8 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const proj = camera.makeProjectionMatrix();
 
   if (handleQuality(game.keyboard, game.imageQualityManager)) {
-    game.playerDrawable.material.setUniformProperty('modelColor', [0, 0, 1]);
+    const mat = game.playerDrawable.material;
+    mat.setUniformProperty('modelColor', [0, 0, 1]);
   }
 
   const imQuality = game.imageQualityManager;
@@ -155,11 +180,11 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const sunPos = game.sunPosition;
   const sunColor = game.sunColor;
 
-  game.grassComponent.update(dt, playerAabb);
-  game.airParticleComponent.update(dt, playerAabb);
+  // game.grassComponent.update(dt, playerAabb);
+  // game.airParticleComponent.update(dt, playerAabb);
 
-  game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
-  game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
+  // game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
+  // game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
 
   renderer.render(game.scene, view, proj);
 
@@ -229,6 +254,11 @@ export async function main() {
   const sun = wgl.Light.Directional();
   sun.setUniformProperty('color', GAME.sunColor);
   sun.setUniformProperty('position', GAME.sunPosition);
+
+  const sunModel = makeLight(renderer, renderContext, GAME.sunPosition, GAME.sunColor);
+  const light2Model = makeLight(renderer, renderContext, [0, 8, 0], [1, 1, 1]);
+  GAME.scene.addModel(sunModel);
+  GAME.scene.addModel(light2Model);
 
   const sun2 = wgl.Light.Point();
   sun2.setUniformProperty('color', [1, 1, 1]);
