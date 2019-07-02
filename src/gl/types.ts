@@ -1,6 +1,7 @@
 import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
 import { BuiltinRealArray, PrimitiveTypedArray } from '../util';
-import { Vao, RenderContext, types, Program, Texture2D } from '.';
+import { Vao, RenderContext, Program, Texture2D, shaderBuilder } from '.';
+import { Material } from './material';
 
 export type StringMap<T> = {
   [k: string]: T
@@ -29,6 +30,15 @@ export const ShaderLimits = {
   maxNumUniformPointLights: 3
 };
 
+export type ShaderRequirements = {
+  inputs: Array<GLSLVariable>,
+  outputs: Array<GLSLVariable>,
+  temporaries: StringMap<GLSLVariable>,
+  uniforms: StringMap<GLSLVariable>,
+  sampler2DCoordinates: string,
+  conditionallyRequireForMaterial: Array<(schema: ShaderSchema, forMaterial: Material) => void>;
+};
+
 type ShaderAttributeMap = {
   position: string,
   normal: string,
@@ -54,7 +64,9 @@ type ShaderUniformMap = {
   ambientConstant: string,
   diffuseConstant: string,
   specularConstant: string,
-  specularPower: string
+  specularPower: string,
+  roughness: string,
+  metallic: string
 };
 
 export type ShaderTemporaryMap = {
@@ -66,7 +78,10 @@ export type ShaderTemporaryMap = {
   diffuseConstant: GLSLVariable,
   specularConstant: GLSLVariable,
   specularPower: GLSLVariable,
-  modelColor: GLSLVariable
+  modelColor: GLSLVariable,
+  uv: GLSLVariable,
+  roughness: GLSLVariable,
+  metallic: GLSLVariable
 };
 
 export type ShaderIdentifierMap = {
@@ -101,9 +116,11 @@ export const DefaultShaderIdentifiers: ShaderIdentifierMap = {
     diffuseConstant: 'diffuse_constant',
     specularConstant: 'specular_constant',
     specularPower: 'specular_power',
+    roughness: 'roughness',
+    metallic: 'metallic'
   },
   temporaries: {
-    worldPosition: {identifier: 'world_position', type: 'vec3'},
+    worldPosition: {identifier: 'world_position', type: 'vec4'},
     normal: {identifier: 'normal', type: 'vec3'},
     normalToCamera: {identifier: 'normal_to_camera', type: 'vec3'},
     lightContribution: {identifier: 'light_contribution', type: 'vec3'},
@@ -111,17 +128,14 @@ export const DefaultShaderIdentifiers: ShaderIdentifierMap = {
     diffuseConstant: {identifier: 'kd', type: 'float'},
     specularConstant: {identifier: 'ks', type: 'float'},
     specularPower: {identifier: 'spec_pow', type: 'float'},
-    modelColor: {identifier: 'use_color', type: 'vec3'}
+    modelColor: {identifier: 'use_color', type: 'vec3'},
+    uv: {identifier: 'uv', type: 'vec2'},
+    roughness: {identifier: 'tmp_roughness', type: 'float'},
+    metallic: {identifier: 'tmp_metallic', type: 'float'}
   }
 };
 
-export const RequiredPhongLightingTemporaries: Array<keyof ShaderTemporaryMap> = [
-  'ambientConstant', 'diffuseConstant', 'specularConstant', 'specularPower', 'modelColor'
-];
-
-export const RequiredNoLightingTemporaries: Array<keyof ShaderTemporaryMap> = ['modelColor'];
-
-export type LightingModel = 'phong' | 'none';
+export type LightingModel = 'phong' | 'physical' | 'none';
 export const enum Lights {
   Directional,
   Point
@@ -225,11 +239,13 @@ export type GLSLPrecision = 'lowp' | 'mediump' | 'highp';
 export type GLSLTypes = 'float' | 'vec2' | 'vec3' | 'vec4' | 'mat2' | 'mat3' | 'mat4' | 'sampler2D';
 export type GLSLVariable = {
   identifier: string,
-  type: GLSLTypes
+  type: GLSLTypes,
+  isArray?: boolean,
+  arraySize?: number
 };
 
-export function makeGLSLVariable(identifier: string, type: GLSLTypes): GLSLVariable {
-  return {identifier, type};
+export function makeGLSLVariable(identifier: string, type: GLSLTypes, isArray?: boolean, arraySize?: number): GLSLVariable {
+  return {identifier, type, isArray, arraySize};
 }
 
 export function glslTypeFromAttributeDescriptor(gl: WebGLRenderingContext, attr: AttributeDescriptor): GLSLTypes {
@@ -408,6 +424,7 @@ export class BufferDescriptor {
 }
 
 export class ShaderSchema {
+  type: Shader;
   version: string;
   precision: GLSLPrecision
   attributes: Array<GLSLVariable>;
@@ -416,7 +433,8 @@ export class ShaderSchema {
   head: Array<() => string>;
   body: Array<() => string>;
 
-  constructor() {
+  constructor(type: Shader) {
+    this.type = type;
     this.version = '';
     this.precision = 'highp';
     this.attributes = [];
@@ -448,38 +466,62 @@ export class ShaderSchema {
     return this.hasIdentifierLinearSearch(name, this.attributes);
   }
 
-  addUniform(identifier: string, type: GLSLTypes): ShaderSchema {
-    this.uniforms.push({identifier, type});
+  addUniform(value: GLSLVariable): ShaderSchema {
+    this.uniforms.push(value);
     return this;
   }
 
-  addVarying(identifier: string, type: GLSLTypes): ShaderSchema {
-    this.varyings.push({identifier, type});
+  addVarying(value: GLSLVariable): ShaderSchema {
+    this.varyings.push(value);
     return this;
   }
 
-  addAttribute(identifier: string, type: GLSLTypes): ShaderSchema {
-    this.attributes.push({identifier, type});
+  addAttribute(value: GLSLVariable): ShaderSchema {
+    this.attributes.push(value);
     return this;
   }
 
-  requireAttribute(identifier: string, type: GLSLTypes): ShaderSchema {
-    if (!this.hasAttribute(identifier)) {
-      this.addAttribute(identifier, type);
+  requireAttribute(value: GLSLVariable): ShaderSchema {
+    if (!this.hasAttribute(value.identifier)) {
+      this.addAttribute(value);
     }
     return this;
   }
 
-  requireVarying(identifier: string, type: GLSLTypes): ShaderSchema {
-    if (!this.hasVarying(identifier)) {
-      this.addVarying(identifier, type);
+  requireVarying(value: GLSLVariable): ShaderSchema {
+    if (!this.hasVarying(value.identifier)) {
+      this.addVarying(value);
     }
     return this;
   }
 
-  requireUniform(identifier: string, type: GLSLTypes): ShaderSchema {
-    if (!this.hasUniform(identifier)) {
-      this.addUniform(identifier, type);
+  requireUniform(value: GLSLVariable): ShaderSchema {
+    if (!this.hasUniform(value.identifier)) {
+      this.addUniform(value);
+    }
+    return this;
+  }
+
+  requireInput(value: GLSLVariable): ShaderSchema {
+    switch (this.type) {
+      case Shader.Vertex:
+        this.requireAttribute(value);
+        break;
+      case Shader.Fragment:
+        this.requireVarying(value);
+        break;
+    }
+    return this;
+  }
+
+  requireOutput(value: GLSLVariable): ShaderSchema {
+    switch (this.type) {
+      case Shader.Vertex:
+        this.requireVarying(value);
+        break;
+      case Shader.Fragment:
+        console.error(`Fragment shader outputs are not supported. Ignoring "${value.identifier}".`);
+        break;
     }
     return this;
   }

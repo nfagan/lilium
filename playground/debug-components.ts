@@ -3,6 +3,7 @@ import { PlayerMovement, Player, WorldGrid, GrassTile,
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
   AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError } from '../src/game';
 import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage } from '../src/util';
+import { mat4 } from 'gl-matrix';
 
 type Game = {
   mouse: wgl.debug.DebugMouseState,
@@ -68,30 +69,41 @@ function makeWorldGrid(): WorldGrid {
 async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
   const modelUrl = '/model/character2:character3.obj';
   const gl = renderContext.gl;
-  const model = await asyncTimeout(() => loadText(modelUrl), 5 * 1e3);
-  const parse = new wgl.parse.Obj(model);
+  const modelObj = await asyncTimeout(() => loadText(modelUrl), 5 * 1e3);
+  const parse = new wgl.parse.Obj(modelObj);
 
   const makeFloatAttribute = wgl.types.makeFloat3Attribute;
   const makeVboDescriptor = wgl.types.makeAnonymousVboDescriptor;
   const makeEboDescriptor = wgl.types.makeAnonymousEboDescriptor;
 
+  // const vboDescriptors = [
+  //   makeVboDescriptor([makeFloatAttribute(gl, 'a_position')], new Float32Array(parse.positions)),
+  //   makeVboDescriptor([makeFloatAttribute(gl, 'a_normal')], new Float32Array(parse.normals)),
+  // ];
+
+  // const eboDescriptor = makeEboDescriptor(new Uint16Array(parse.positionIndices));
+
+  const cubePositions = wgl.geometry.cubeInterleavedPositionsNormals();
   const vboDescriptors = [
-    makeVboDescriptor([makeFloatAttribute(gl, 'a_position')], new Float32Array(parse.positions)),
-    makeVboDescriptor([makeFloatAttribute(gl, 'a_normal')], new Float32Array(parse.normals)),
+    makeVboDescriptor([makeFloatAttribute(gl, 'a_position'), makeFloatAttribute(gl, 'a_normal')], cubePositions)
   ];
+  const eboDescriptor = makeEboDescriptor(wgl.geometry.cubeIndices());
 
-  const eboDescriptor = makeEboDescriptor(new Uint16Array(parse.positionIndices));
-
-  const mat = wgl.Material.Phong();
-  mat.setUniformProperty('modelColor', 1);
+  const mat = wgl.Material.Physical();
+  mat.setUniformProperty('modelColor', 0.2);
+  mat.setUniformProperty('metallic', 1);
+  mat.setUniformProperty('roughness', 0.1);
 
   const prog = renderer.requireProgram(mat);
   const vao = wgl.Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
 
   const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
-  drawable.count = parse.positionIndices.length;
+  // drawable.count = parse.positionIndices.length;
+  drawable.count = eboDescriptor.indices.length;
 
-  return new wgl.Model(drawable, mat);
+  const model = new wgl.Model(drawable, mat);
+  model.transform.translate([10, 2, 10]);
+  return model;
 }
 
 function makeController(keyboard: wgl.Keyboard): Controller {
@@ -133,7 +145,7 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const proj = camera.makeProjectionMatrix();
 
   if (handleQuality(game.keyboard, game.imageQualityManager)) {
-    //
+    game.playerDrawable.material.setUniformProperty('modelColor', [0, 0, 1]);
   }
 
   const imQuality = game.imageQualityManager;

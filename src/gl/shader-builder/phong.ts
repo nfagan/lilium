@@ -1,6 +1,58 @@
 import { types, Material } from '..';
-import { normalToCamera, addUniformsForMaterial, declareRequiredTemporaries, 
-  extractUniformsToTemporaries, addPositionNormalUvVaryings, applySimpleVertexPipeline } from './common';
+import { addRequirements } from './common';
+import * as components from './components';
+
+function makePhongVertexRequirements(identifiers: types.ShaderIdentifierMap): types.ShaderRequirements {
+  return {
+    inputs: [],
+    outputs: [],
+    temporaries: {},
+    uniforms: {},
+    sampler2DCoordinates: identifiers.attributes.uv,
+    conditionallyRequireForMaterial: []
+  }
+}
+
+function makePhongFragmentRequirements(identifiers: types.ShaderIdentifierMap): types.ShaderRequirements {
+  const varyings = identifiers.varyings;
+  const uniforms = identifiers.uniforms;
+  const temporaries = identifiers.temporaries;
+
+  const maxDirLights = types.ShaderLimits.maxNumUniformDirectionalLights;
+  const maxPointLights = types.ShaderLimits.maxNumUniformPointLights;
+
+  return {
+    inputs: [],
+    outputs: [],
+    temporaries: {
+      ambientConstant: temporaries.ambientConstant,
+      diffuseConstant: temporaries.diffuseConstant,
+      specularConstant: temporaries.specularConstant,
+      specularPower: temporaries.specularPower,
+      modelColor: temporaries.modelColor,
+      normal: temporaries.normal,
+      normalToCamera: temporaries.normalToCamera,
+      lightContribution: temporaries.lightContribution,
+    },
+    uniforms: {
+      ambientConstant: types.makeGLSLVariable(uniforms.ambientConstant, 'float'),
+      diffuseConstant: types.makeGLSLVariable(uniforms.diffuseConstant, 'float'),
+      specularConstant: types.makeGLSLVariable(uniforms.specularConstant, 'float'),
+      specularPower: types.makeGLSLVariable(uniforms.specularPower, 'float'),
+      directionalLightPositions: types.makeGLSLVariable(uniforms.directionalLightPositions, 'vec3', true, maxDirLights),
+      directionalLightColors: types.makeGLSLVariable(uniforms.directionalLightColors, 'vec3', true, maxDirLights),
+      pointLightPositions: types.makeGLSLVariable(uniforms.pointLightPositions, 'vec3', true, maxPointLights),
+      pointLightColors: types.makeGLSLVariable(uniforms.pointLightColors, 'vec3', true, maxPointLights),
+      modelColor: types.makeGLSLVariable(uniforms.modelColor, 'vec3'),
+      cameraPosition: types.makeGLSLVariable(uniforms.cameraPosition, 'vec3')
+    },
+    sampler2DCoordinates: varyings.uv,
+    conditionallyRequireForMaterial: []
+  }
+}
+
+const PhongFragmentRequirements = makePhongFragmentRequirements(types.DefaultShaderIdentifiers);
+const PhongVertexRequirements = makePhongVertexRequirements(types.DefaultShaderIdentifiers);
 
 function phongDirectionalLightingDeclaration(): string {
   return `
@@ -80,48 +132,39 @@ function phongFragmentLightingBody(identifiers: types.ShaderIdentifierMap): stri
   const varyings = identifiers.varyings;
 
   return `
-  vec3 ${temporaries.normal.identifier} = normalize(${varyings.normal});
-  vec3 ${temporaries.lightContribution.identifier} = vec3(0.0);
-
-  ${normalToCamera(identifiers)}
+  ${temporaries.normal.identifier} = normalize(${varyings.normal});
+  ${components.normalToCamera(identifiers)}
   ${phongDirectionalLightLoop(identifiers)}
   ${phongPointLightLoop(identifiers)}
   gl_FragColor = vec4(${temporaries.lightContribution.identifier} * ${temporaries.modelColor.identifier}, 1.0);`;
 }
 
-function addPhongFragmentUniforms(toSchema: types.ShaderSchema, identifiers: types.ShaderIdentifierMap): void {
-  const maxNumDirLights = types.ShaderLimits.maxNumUniformDirectionalLights;
-  const maxNumPointLights = types.ShaderLimits.maxNumUniformPointLights;
-
-  toSchema.requireUniform(identifiers.uniforms.cameraPosition, 'vec3');
-  toSchema.requireUniform(`${identifiers.uniforms.directionalLightPositions}[${maxNumDirLights}]`, 'vec3');
-  toSchema.requireUniform(`${identifiers.uniforms.directionalLightColors}[${maxNumDirLights}]`, 'vec3');
-  toSchema.requireUniform(`${identifiers.uniforms.pointLightPositions}[${maxNumPointLights}]`, 'vec3');
-  toSchema.requireUniform(`${identifiers.uniforms.pointLightColors}[${maxNumPointLights}]`, 'vec3');
-}
-
 export function applyPhongVertexPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {
+  let requirements: types.ShaderRequirements;
+
   if (identifiers === undefined) {
     identifiers = types.DefaultShaderIdentifiers;
+    requirements = PhongVertexRequirements;
+  } else {
+    requirements = makePhongVertexRequirements(identifiers);
   }
 
-  applySimpleVertexPipeline(toSchema, forMaterial, identifiers);
+  addRequirements(toSchema, requirements, forMaterial);
 }
 
 export function applyPhongFragmentPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {
+  let requirements: types.ShaderRequirements;
+
   if (identifiers === undefined) {
     identifiers = types.DefaultShaderIdentifiers;
+    requirements = PhongFragmentRequirements;
+  } else {
+    requirements = makePhongFragmentRequirements(identifiers);
   }
 
-  addUniformsForMaterial(toSchema, forMaterial);
-
-  addPositionNormalUvVaryings(toSchema, forMaterial, identifiers);
-  addPhongFragmentUniforms(toSchema, identifiers);
+  addRequirements(toSchema, requirements, forMaterial);
 
   toSchema.head.push(phongDirectionalLightingDeclaration);
   toSchema.head.push(phongPointLightingDeclaration);
-
-  toSchema.body.push(() => declareRequiredTemporaries(types.RequiredPhongLightingTemporaries, identifiers.temporaries));
-  toSchema.body.push(() => extractUniformsToTemporaries(forMaterial, identifiers.temporaries, identifiers.varyings.uv));
   toSchema.body.push(() => phongFragmentLightingBody(identifiers));
 }

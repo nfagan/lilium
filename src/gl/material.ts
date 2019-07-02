@@ -32,6 +32,15 @@ export class Material {
     return this.descriptor.uniforms[name] !== undefined;
   }
 
+  makeVariableForUniform(name: string): types.GLSLVariable {
+    if (this.hasUniform(name)) {
+      const uniform = this.descriptor.uniforms[name];
+      return types.makeGLSLVariable(uniform.identifier, uniform.type);
+    } else {
+      return null;
+    }
+  }
+
   useActiveUniforms(cb: (uniform: types.UniformValue, kind: string) => void): void {
     const uniforms = this.descriptor.uniforms;
 
@@ -102,7 +111,7 @@ export class Material {
     return new Material({
       receivesShadow: false,
       castsShadow: false,
-      lightingModel: 'phong',
+      lightingModel: 'none',
       uniforms: {}
     });
   }
@@ -122,5 +131,20 @@ export class Material {
         modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])
       }
     });
+  }
+
+  static Physical(identifiers?: types.ShaderIdentifierMap): Material {
+    identifiers = Material.requireIdentifiers(identifiers);
+
+    return new Material({
+      receivesShadow: true,
+      castsShadow: true,
+      lightingModel: 'physical',
+      uniforms: {
+        roughness: types.makeUniformFloatValue(identifiers.uniforms.roughness, 0.5),
+        metallic: types.makeUniformFloatValue(identifiers.uniforms.metallic, 0.5),
+        modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])
+      }
+    })
   }
 }

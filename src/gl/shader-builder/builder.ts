@@ -1,9 +1,12 @@
 import * as types from '../types';
 import * as phong from './phong';
 import * as noLight from './no-light';
+import * as geometry from './geometry';
+import * as physical from './physical';
 import { Program } from '../program';
 import { Material } from '../material';
 import { shaderSchemaToString } from './common';
+import { Stopwatch } from '../../util';
 
 type ProgramCacheMap = {
   [key: string]: Program;
@@ -12,10 +15,12 @@ type ProgramCacheMap = {
 export class ProgramBuilder {
   private gl: WebGLRenderingContext;
   private programs: ProgramCacheMap;
+  private stopWatch: Stopwatch;
 
   constructor(gl: WebGLRenderingContext) {
     this.gl = gl;
     this.programs = {};
+    this.stopWatch = new Stopwatch();
   }
 
   private generateHash(forDescriptor: types.MaterialDescriptor): string {
@@ -50,26 +55,32 @@ export class ProgramBuilder {
   }
 
   private makeProgram(forMaterial: Material): Program {
-    const fragSchema = new types.ShaderSchema();
-    const vertSchema = new types.ShaderSchema();
+    const fragSchema = new types.ShaderSchema(types.Shader.Fragment);
+    const vertSchema = new types.ShaderSchema(types.Shader.Vertex);
+
+    geometry.applyBaseGeometryVertexPipeline(vertSchema, forMaterial);
+    geometry.applyBaseGeometryFragmentPipeline(fragSchema, forMaterial);
 
     const lightingModel = forMaterial.descriptor.lightingModel;
 
-    if (lightingModel === 'phong') {
-      phong.applyPhongVertexPipeline(vertSchema, forMaterial);
-      phong.applyPhongFragmentPipeline(fragSchema, forMaterial);
-
-    } else if (lightingModel === 'none') {
-      noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);
-      noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
-
-    } else {
-      console.warn(`Unsupported lighting model: "${forMaterial.descriptor.lightingModel}". Using "none".`);
-      noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);
-      noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
-
+    switch (lightingModel) {
+      case 'phong':
+        phong.applyPhongVertexPipeline(vertSchema, forMaterial);
+        phong.applyPhongFragmentPipeline(fragSchema, forMaterial);
+        break;
+      case 'physical':
+        physical.applyPhysicalVertexPipeline(vertSchema, forMaterial);
+        physical.applyPhysicalFragmentPipeline(fragSchema, forMaterial);
+        break;
+      case 'none':
+        noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);
+        noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
+        break;
+      default:
+        console.warn(`Unsupported lighting model: "${forMaterial.descriptor.lightingModel}". Using "none".`);
+        noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);
+        noLight.applyNoLightFragmentPipeline(fragSchema, forMaterial);
     }
-
     // console.log(shaderSchemaToString(vertSchema));
     // console.log(shaderSchemaToString(fragSchema));
 
@@ -81,8 +92,9 @@ export class ProgramBuilder {
     const maybeProg = this.programs[programInfoHash];
     
     if (maybeProg === undefined) {
-      console.log('Making new program ...');
+      this.stopWatch.reset();
       const prog = this.makeProgram(forMaterial);
+      console.log(`Made new program in ${this.stopWatch.elapsed().toFixed(2)} ms.`);
       this.programs[programInfoHash] = prog;
       return prog;
     } else {
