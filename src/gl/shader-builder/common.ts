@@ -271,14 +271,15 @@ export function shaderSchemaToString(schema: types.ShaderSchema): string {
 
   for (let i = 0; i < schema.temporaries.length; i++) {
     const temporary = schema.temporaries[i];
-    const initializer = defaultInitializerExpressionForType(temporary.type);
-    // arrayRes.push(declarationToString(temporary, initializer));
     arrayRes.push(declarationToString(temporary));
+    // const initializer = defaultInitializerExpressionForType(temporary.type);
+    // arrayRes.push(declarationToString(temporary, initializer));
   }
 
   for (let i = 0; i < schema.body.length; i++) {
     arrayRes.push(schema.body[i]());
   }
+  
   arrayRes.push('}');
 
   return arrayRes.join('\n');

@@ -39,8 +39,6 @@ export class WorldGridDrawable {
   private colorVbo: Vbo;
   private tmpVec3: Float32Array;
   private material: Material;
-  private lightPositionUniformName: string;
-  private lightColorUniformName: string;
 
   private filledIndices: Array<number>;
 
@@ -50,8 +48,6 @@ export class WorldGridDrawable {
     this.renderContext = renderContext;
     this.maxNumInstances = maxNumInstances;
     this.material = Material.Physical();
-    this.lightColorUniformName = `${types.DefaultShaderIdentifiers.uniforms.directionalLightColors}[0]`;
-    this.lightPositionUniformName = `${types.DefaultShaderIdentifiers.uniforms.directionalLightPositions}[0]`;
     this.tmpVec3 = new Float32Array(3);
     this.filledIndices = [];
   }
@@ -71,11 +67,8 @@ export class WorldGridDrawable {
     plugInputs.modelColor.sourceType = types.ShaderDataSource.Varying;
 
     const fragSchema = new types.ShaderSchema(types.Shader.Fragment);
-    shaderBuilder.physical.applyPhysicalFragmentPipeline(fragSchema, mat, plugInputs);
+    shaderBuilder.physical.applyComponent(fragSchema, mat, plugInputs);
 
-    fragSchema.requireInput(types.makeGLSLVariable('v_color', 'vec3'));
-    fragSchema.requireInput(types.makeGLSLVariable('v_position', 'vec3'));
-    fragSchema.requireInput(types.makeGLSLVariable('v_normal', 'vec3'));
     const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
     console.log(fragSource);
     

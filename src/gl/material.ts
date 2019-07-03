@@ -71,7 +71,10 @@ export class Material {
 
   removeUnusedUniforms(inProg: Program): void {
     for (let i = 0; i < this.activeUniforms.length; i++) {
-      if (!inProg.isUniform(this.activeUniforms[i])) {
+      const kind = this.activeUniforms[i];
+      const identifier = this.descriptor.uniforms[kind].identifier;
+
+      if (!inProg.isUniform(identifier)) {
         this.activeUniforms.splice(i, 1);
       }
     }
@@ -162,7 +165,7 @@ export class Material {
       castsShadow: true,
       lightingModel: 'physical',
       uniforms: {
-        ambientConstant: types.makeUniformFloatValue(identifiers.uniforms.ambientConstant, 0.1),
+        ambientConstant: types.makeUniformFloatValue(identifiers.uniforms.ambientConstant, 0.2),
         roughness: types.makeUniformFloatValue(identifiers.uniforms.roughness, 0.5),
         metallic: types.makeUniformFloatValue(identifiers.uniforms.metallic, 0.5),
         modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])
