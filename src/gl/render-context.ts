@@ -1,4 +1,4 @@
-import { Vao } from './vao';
+import { Vao, Vbo } from './vao';
 import { Program } from './program';
 
 export class RenderContext {
@@ -7,12 +7,14 @@ export class RenderContext {
   extOesVao: OES_vertex_array_object;
 
   private boundVao: Vao;
+  private boundVbo: Vbo;
   private boundProgram: Program;
 
   constructor(gl: WebGLRenderingContext) {
     this.gl = gl;
     this.getExtensions(gl);
     this.boundVao = null;
+    this.boundVbo = null;
     this.boundProgram = null;
   }
 
@@ -20,6 +22,16 @@ export class RenderContext {
     if (this.boundVao === null || this.boundVao.id !== vao.id) {
       vao.bind();
       this.boundVao = vao;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  bindVbo(vbo: Vbo): boolean {
+    if (this.boundVbo === null || this.boundVbo.id !== vbo.id) {
+      vbo.bind(this.gl);
+      this.boundVbo = vbo;
       return true;
     } else {
       return false;

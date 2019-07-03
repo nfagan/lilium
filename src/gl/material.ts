@@ -69,6 +69,14 @@ export class Material {
     return false;
   }
 
+  removeUnusedUniforms(inProg: Program): void {
+    for (let i = 0; i < this.activeUniforms.length; i++) {
+      if (!inProg.isUniform(this.activeUniforms[i])) {
+        this.activeUniforms.splice(i, 1);
+      }
+    }
+  }
+
   setUniformProperty(name: string, value: types.UniformSettable, numChannels?: number): void {
     const uniforms = this.descriptor.uniforms;
 

@@ -1,5 +1,72 @@
 import { types, Material } from '..';
 
+export function applyMaterial(toPlug: types.ShaderComponentPlugs, forMaterial: Material): void {
+  forMaterial.useActiveUniforms((uniform, kind) => {
+    if (kind in toPlug) {
+      toPlug[kind].source.type = uniform.type;
+    }
+  });
+}
+
+export function connect(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
+  const toJoin: Array<string> = [];
+
+  for (let connectionName in toOutlet) {
+    const outlet = toOutlet[connectionName];
+    const connection = plug[connectionName];
+
+    forSchema.requireTemporary(outlet);
+
+    if (plug.hasOwnProperty(connectionName) && connection !== undefined) {
+      const source = connection.source;
+      const sourceId = source.identifier;
+      const samplerSource = connection.samplerSource;
+      const outletId = outlet.identifier;
+      const outletType = outlet.type;
+
+      if (source.type === 'sampler2D' && samplerSource === undefined) {
+        console.warn('Sampler source requires an additional samplerSource input.');
+
+      } else {
+        const samplerSourceId = samplerSource === undefined ? '' : samplerSource.source.identifier;
+        const assignResult = assign(outletId, outletType, sourceId, source.type, samplerSourceId);
+
+        if (assignResult.success) {
+          toJoin.push(assignResult.value);
+
+          if (connection.sourceType !== types.ShaderDataSource.Temporary) {
+            forSchema.requireBySourceType(source, connection.sourceType);
+          }
+        }
+      }
+    }
+  }
+
+  forSchema.body.push(() => toJoin.join('\n'));
+}
+
+export function requireStatics(toSchema: types.ShaderSchema, statics: types.ShaderComponentPlugs): void {
+  const toJoin: Array<string> = [];
+
+  for (let staticName in statics) {
+    const staticValue = statics[staticName];
+    const source = staticValue.source;
+
+    switch (staticValue.sourceType) {
+      case types.ShaderDataSource.Temporary:
+        toJoin.push(declarationToString(source));
+        break;
+      case types.ShaderDataSource.Uniform:
+        toSchema.requireUniform(source);
+        break;
+      default:
+        console.error(`Invalid source type "${staticValue.sourceType}" for static: "${source.identifier}".`);
+    }
+  }
+
+  toSchema.head.push(() => toJoin.join('\n'));
+}
+
 function addRequiredUniforms(toSchema: types.ShaderSchema, requiredUniforms: types.StringMap<types.GLSLVariable>, material: Material): void {
   for (let uniformName in requiredUniforms) {
     const uniform = material.hasUniform(uniformName) ? material.makeVariableForUniform(uniformName) : requiredUniforms[uniformName];
@@ -7,16 +74,10 @@ function addRequiredUniforms(toSchema: types.ShaderSchema, requiredUniforms: typ
   }
 }
 
-function addRequiredTemporaries(toSchema: types.ShaderSchema, requiredTemporaries: types.StringMap<types.GLSLVariable>): void {
-  const temporaryDecls: Array<string> = [];
-
-  for (let temporary in requiredTemporaries) {
-    const required = requiredTemporaries[temporary];
-    const initializer = defaultInitializerExpressionForType(required.type);
-    temporaryDecls.push(declarationToString(required, initializer));
+export function requireTemporaries(toSchema: types.ShaderSchema, requiredTemporaries: types.StringMap<types.GLSLVariable>): void {
+  for (let temporaryName in requiredTemporaries) {
+    toSchema.requireTemporary(requiredTemporaries[temporaryName]);
   }
-
-  toSchema.body.push(() => temporaryDecls.join('\n'));
 }
 
 function addUniformsToTemporaries(toSchema: types.ShaderSchema, requirements: types.ShaderRequirements, forMaterial: Material): void {
@@ -48,7 +109,7 @@ export function addRequirements(toSchema: types.ShaderSchema, requirements: type
     toSchema.requireOutput(requirements.outputs[i]);
   }
   addRequiredUniforms(toSchema,  requirements.uniforms, forMaterial);
-  addRequiredTemporaries(toSchema, requirements.temporaries);
+  requireTemporaries(toSchema, requirements.temporaries);
   addUniformsToTemporaries(toSchema, requirements, forMaterial);
 }
 
@@ -121,6 +182,26 @@ function sampler2DToTemporary(srcIdentifier: string, destIdentifier: string, des
   return assignmentComponentsToString(destIdentifier, initializer);
 }
 
+function makeAssignResult(success: boolean, value: string): {success: boolean, value: string} {
+  return {success, value};
+}
+
+function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier: string, 
+  srcType: types.GLSLTypes, uvIdentifier: string): {success: boolean, value: string} {
+  if (srcType === destType) {
+    return makeAssignResult(true, assignmentComponentsToString(destIdentifier, srcIdentifier));
+  }
+
+  switch (srcType) {
+    case 'float':
+      return makeAssignResult(true, expandFloatToComponents(srcIdentifier, destIdentifier, destType));
+    case 'sampler2D':
+      return makeAssignResult(true, sampler2DToTemporary(srcIdentifier, destIdentifier, destType, uvIdentifier));
+  }
+
+  return makeAssignResult(false, `Unsupported source type: ${srcType} for destination type: ${destType}.`);
+}
+
 function uniformToTemporary(uniform: types.UniformValue, temporaryIdentifier: string, temporaryType: types.GLSLTypes, uvIdentifier: string): string {
   if (uniform.type === temporaryType) {
     return assignmentComponentsToString(temporaryIdentifier, uniform.identifier);
@@ -187,6 +268,14 @@ export function shaderSchemaToString(schema: types.ShaderSchema): string {
   }
 
   arrayRes.push('void main() {');
+
+  for (let i = 0; i < schema.temporaries.length; i++) {
+    const temporary = schema.temporaries[i];
+    const initializer = defaultInitializerExpressionForType(temporary.type);
+    // arrayRes.push(declarationToString(temporary, initializer));
+    arrayRes.push(declarationToString(temporary));
+  }
+
   for (let i = 0; i < schema.body.length; i++) {
     arrayRes.push(schema.body[i]());
   }

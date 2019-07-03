@@ -5,6 +5,7 @@ import { Program } from './program';
 import { Scene } from './scene';
 import { mat4 } from 'gl-matrix';
 import { types } from '.';
+import { ICamera } from './camera';
 
 export class Renderer {
   identifiers: types.ShaderIdentifierMap;
@@ -20,7 +21,7 @@ export class Renderer {
     this.identifiers = types.DefaultShaderIdentifiers;
   }
 
-  render(scene: Scene, view: mat4, proj: mat4): void {
+  render(scene: Scene, camera: ICamera, view: mat4, proj: mat4): void {
     const models = scene.models;
     const lights = scene.lights;
     const renderContext = this.renderContext;
@@ -38,6 +39,7 @@ export class Renderer {
         for (let j = 0; j < lights.length; j++) {
           lights[j].setUniforms(progForMaterial);
         }
+        progForMaterial.setVec3(identifiers.uniforms.cameraPosition, camera.position);
       }
 
       progForMaterial.setMat4(identifiers.uniforms.model, model.transform.matrix);

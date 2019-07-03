@@ -81,6 +81,10 @@ export class Program {
     }
   }
 
+  isUniform(name: string): boolean {
+    return this.getUniformLocation(name) !== null;
+  }
+
   setUniform(uniform: types.UniformValue): void {
     this.setUniformFromComponents(uniform.identifier, uniform.type, uniform.value);
   }

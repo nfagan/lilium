@@ -70,7 +70,7 @@ export class ProgramBuilder {
         break;
       case 'physical':
         physical.applyPhysicalVertexPipeline(vertSchema, forMaterial);
-        physical.applyPhysicalFragmentPipeline(fragSchema, forMaterial);
+        physical.applyPhysicalFragmentPipeline(fragSchema, forMaterial, physical.makeInputPlugDefaults());
         break;
       case 'none':
         noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);

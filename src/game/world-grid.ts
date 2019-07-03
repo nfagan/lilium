@@ -1,7 +1,34 @@
-import { types, VoxelGrid, collision, math, geometry, Vao, Vbo, RenderContext, Program } from '../gl';
+import { types, VoxelGrid, collision, math, geometry, Vao, Vbo, RenderContext, Program, Material, shaderBuilder, Scene } from '../gl';
 import * as gridSources from './shaders/voxel-grid';
+import { mat4 } from 'gl-matrix';
+
+export class WorldGridComponent {
+  gridDrawable: WorldGridDrawable;
+  worldGrid: WorldGrid;
+
+  constructor(worldGrid: WorldGrid, gridDrawable: WorldGridDrawable) {
+    this.worldGrid = worldGrid;
+    this.gridDrawable = gridDrawable;
+  }
+
+  fillGround(numX: number, numZ: number): void {
+    const atIdx = [1, 1, 1];
+
+    for (let i = 0; i < numX; i++) {
+      for (let j = 0; j < numZ; j++) {
+        atIdx[0] = i;
+        atIdx[1] = 0;
+        atIdx[2] = j;
+
+        this.worldGrid.unconditionalAddCell(atIdx);
+        this.gridDrawable.addCell(atIdx);
+      }
+    }    
+  }
+}
 
 export class WorldGridDrawable {
+  private grid: VoxelGrid;
   private isCreated: boolean;
   private renderContext: RenderContext;
   private maxNumInstances: number;
@@ -10,11 +37,23 @@ export class WorldGridDrawable {
 
   private translationVbo: Vbo;
   private colorVbo: Vbo;
+  private tmpVec3: Float32Array;
+  private material: Material;
+  private lightPositionUniformName: string;
+  private lightColorUniformName: string;
 
-  constructor(renderContext: RenderContext, maxNumInstances: number) {
+  private filledIndices: Array<number>;
+
+  constructor(grid: VoxelGrid, renderContext: RenderContext, maxNumInstances: number) {
     this.isCreated = false;
+    this.grid = grid;
     this.renderContext = renderContext;
     this.maxNumInstances = maxNumInstances;
+    this.material = Material.Physical();
+    this.lightColorUniformName = `${types.DefaultShaderIdentifiers.uniforms.directionalLightColors}[0]`;
+    this.lightPositionUniformName = `${types.DefaultShaderIdentifiers.uniforms.directionalLightPositions}[0]`;
+    this.tmpVec3 = new Float32Array(3);
+    this.filledIndices = [];
   }
 
   dispose(): void {
@@ -22,6 +61,111 @@ export class WorldGridDrawable {
       this.drawable.vao.dispose();
       this.isCreated = false;
     }
+  }
+
+  private makeProgram(gl: WebGLRenderingContext): Program {
+    const mat = this.material;
+
+    const plugInputs = shaderBuilder.physical.makeInputPlugDefaults();
+    plugInputs.modelColor.source.identifier = 'v_color';
+    plugInputs.modelColor.sourceType = types.ShaderDataSource.Varying;
+
+    const fragSchema = new types.ShaderSchema(types.Shader.Fragment);
+    shaderBuilder.physical.applyPhysicalFragmentPipeline(fragSchema, mat, plugInputs);
+
+    fragSchema.requireInput(types.makeGLSLVariable('v_color', 'vec3'));
+    fragSchema.requireInput(types.makeGLSLVariable('v_position', 'vec3'));
+    fragSchema.requireInput(types.makeGLSLVariable('v_normal', 'vec3'));
+    const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
+    console.log(fragSource);
+    
+    // const prog = Program.fromSources(gl, gridSources.vertex, gridSources.fragment);
+    const prog = Program.fromSources(gl, gridSources.vertex, fragSource);
+
+    mat.removeUnusedUniforms(prog);
+
+    return prog;
+  }
+
+  addCell(atIdx: types.Real3): void {
+    for (let i = 0; i < 3; i++) {
+      this.filledIndices.push(atIdx[i]);
+    }
+  }
+
+  private requireTmpArray(withSize: number): Float32Array {
+    if (withSize !== 3) {
+      return new Float32Array(withSize);
+    } else {
+      return this.tmpVec3;
+    }
+  }
+
+  update(): void {
+    const numFilled = this.grid.countFilled();
+    const numActiveInstances = this.drawable.numActiveInstances;
+    const numToUpdate = numFilled - numActiveInstances;
+
+    if (numToUpdate === 0) {
+      return;
+    }
+
+    console.log(`Updating ${numToUpdate}; numActive: ${numActiveInstances}`);
+
+    const offsetFilled = numActiveInstances * 3;
+    const byteOffset = offsetFilled * Float32Array.BYTES_PER_ELEMENT;
+
+    const cellDims = this.grid.cellDimensions;
+    const gridPos = this.grid.position;
+
+    const tmpArray = this.requireTmpArray(numToUpdate * 3);
+    const filled = this.filledIndices;
+    const gl = this.renderContext.gl;
+
+    for (let i = 0; i < numToUpdate; i++) {
+      for (let j = 0; j < 3; j++) {
+        const linearIdx = i*3 + j;
+        const minDim = filled[linearIdx + offsetFilled] * cellDims[j] + gridPos[j];
+        const midDim = minDim + cellDims[j]/2;
+        tmpArray[linearIdx] = midDim;
+      }
+    }
+
+    this.renderContext.bindVbo(this.translationVbo);
+    this.translationVbo.subData(gl, tmpArray, byteOffset);
+  
+    for (let i = 0; i < numToUpdate; i++) {  
+      tmpArray[i*3+0] = 0;
+      tmpArray[i*3+1] = 0.45;
+      tmpArray[i*3+2] = 0.02;
+    }
+
+    this.colorVbo.bind(gl);
+    this.colorVbo.subData(gl, tmpArray, byteOffset);
+    this.drawable.numActiveInstances = numFilled;
+  }
+
+  draw(view: mat4, proj: mat4, camPos: types.Real3, scene: Scene): void {
+    const cellDims = this.grid.cellDimensions;
+
+    this.material.setUniformProperty('roughness', 2);
+    this.material.setUniformProperty('metallic', 0);
+
+    this.renderContext.useProgram(this.program);
+    this.material.setUniforms(this.program);
+
+    this.program.setMat4('view', view);
+    this.program.setMat4('projection', proj);
+    this.program.setVec3(types.DefaultShaderIdentifiers.uniforms.cameraPosition, camPos);
+
+    this.program.set3f('scale', cellDims[0]/2, cellDims[1]/2, cellDims[2]/2);
+
+    for (let i = 0; i < scene.lights.length; i++) {
+      scene.lights[i].setUniforms(this.program);
+    }
+
+    this.renderContext.bindVao(this.drawable.vao);
+    this.drawable.draw();
   }
 
   create(): void {
@@ -37,7 +181,7 @@ export class WorldGridDrawable {
     const indices = geometry.cubeIndices();
 
     const emptyFloatArray = new Float32Array(maxNumInstances * 3); //  * (x, y, z) or (r, g, b)
-    const prog = Program.fromSources(gl, gridSources.vertex, gridSources.fragment);
+    const prog = this.makeProgram(gl);
 
     const vboDescriptors = [{
       name: 'position',
@@ -78,13 +222,10 @@ export class WorldGridDrawable {
 
 export class WorldGrid {
   voxelGrid: VoxelGrid;
-  private maxNumFilledCells: number;
+  readonly maxNumFilledCells: number;
 
   private gridCollisionResult: collision.VoxelGridCollisionResult;
   private gridCollider: collision.VoxelGridCollider;
-
-  private filledCells: Array<number>;
-  private cellColors: Array<number>;
 
   private sub2ind: Map<number, number>;
 
@@ -104,24 +245,7 @@ export class WorldGrid {
     this.maxNumFilledCells = maxNumFilledCells;
     this.gridCollisionResult = new collision.VoxelGridCollisionResult();
     this.gridCollider = new collision.VoxelGridCollider(voxelGrid);
-
-    this.filledCells = [];
-    this.cellColors = [];
-
     this.sub2ind = new Map<number, number>();
-  }
-
-  fillGround(numX: number, numZ: number): void {
-    const atIdx = [1, 1, 1];
-
-    for (let i = 0; i < numX; i++) {
-      for (let j = 0; j < numZ; j++) {
-        atIdx[0] = i;
-        atIdx[1] = 0;
-        atIdx[2] = j;
-        this.unconditionalAddCell(atIdx);
-      }
-    }    
   }
 
   unconditionalAddCell(atIdx: types.Real3): void {
@@ -151,13 +275,12 @@ export class WorldGrid {
       }
     }
 
-    const currIdx = this.filledCells.length;
+    // const currIdx = this.filledCells.length;
 
-    for (let i = 0; i < 3; i++) {
-      this.filledCells.push(atIdx[i]);
-      this.cellColors.push(Math.random());
-    }
+    // for (let i = 0; i < 3; i++) {
+    //   this.filledCells.push(atIdx[i]);
+    // }
 
-    this.sub2ind.set(grid.subToInd(atIdx), currIdx);
+    // this.sub2ind.set(grid.subToInd(atIdx), currIdx);
   }
 }

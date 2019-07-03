@@ -1,55 +1,143 @@
 import { types, Material } from '..';
-import { addRequirements } from './common';
+import { requireTemporaries, requireStatics, connect, applyMaterial } from './common';
 
-function makePhysicalVertexRequirements(identifiers: types.ShaderIdentifierMap): types.ShaderRequirements {
+export type PhysicalComponentStatics = {
+  directionalLightPositions: types.ShaderComponentPlug,
+  directionalLightColors: types.ShaderComponentPlug,
+  pointLightPositions: types.ShaderComponentPlug,
+  pointLightColors: types.ShaderComponentPlug,
+}
+
+export type PhysicalComponentTemporaries = {
+  lightContribution: types.GLSLVariable
+}
+
+export type PhysicalComponentInputPlug = {
+  roughness: types.ShaderComponentPlug
+  metallic: types.ShaderComponentPlug,
+  ambientConstant: types.ShaderComponentPlug,
+  modelColor: types.ShaderComponentPlug,
+  position: types.ShaderComponentPlug,
+  normal: types.ShaderComponentPlug,
+  cameraPosition: types.ShaderComponentPlug,
+}
+
+export type PhysicalComponentOutputPlug = {
+  modelColor: types.ShaderComponentPlug
+}
+
+export type PhysicalComponentInputOutlet = {
+  roughness: types.GLSLVariable,
+  metallic: types.GLSLVariable,
+  ambientConstant: types.GLSLVariable,
+  modelColor: types.GLSLVariable,
+  position: types.GLSLVariable,
+  normal: types.GLSLVariable,
+  cameraPosition: types.GLSLVariable,
+}
+
+export type PhysicalComponentOutputOutlet = {
+  modelColor: types.GLSLVariable
+}
+
+const DefaultPhysicalOutletInputs = makeInputOutletDefaults(types.DefaultShaderIdentifiers);
+const DefaultPhysicalOutletOutputs = makeOutputOutletDefaults(types.DefaultShaderIdentifiers);
+const DefaultPhysicalStatics = makeStaticDefaults(types.DefaultShaderIdentifiers);
+const DefaultPhysicalTemporaries = makeTemporaryDefaults(types.DefaultShaderIdentifiers);
+
+function makeTemporaryDefaults(identifiers: types.ShaderIdentifierMap): PhysicalComponentTemporaries {
   return {
-    inputs: [],
-    outputs: [],
-    temporaries: {},
-    uniforms: {},
-    sampler2DCoordinates: identifiers.attributes.uv,
-    conditionallyRequireForMaterial: []
+    lightContribution: identifiers.temporaries.lightContribution
   }
 }
 
-function makePhysicalFragmentRequirements(identifiers: types.ShaderIdentifierMap): types.ShaderRequirements {
-  const varyings = identifiers.varyings;
-  const uniforms = identifiers.uniforms;
-  const temporaries = identifiers.temporaries;
-
-  const maxDirLights = types.ShaderLimits.maxNumUniformDirectionalLights;
-  const maxPointLights = types.ShaderLimits.maxNumUniformPointLights;
+function makeStaticDefaults(identifiers: types.ShaderIdentifierMap): PhysicalComponentStatics {
+  const maxNumDirLights = types.ShaderLimits.maxNumUniformDirectionalLights;
+  const maxNumPointLights = types.ShaderLimits.maxNumUniformPointLights;
 
   return {
-    inputs: [],
-    outputs: [],
-    temporaries: {
-      roughness: temporaries.roughness,
-      metallic: temporaries.metallic,
-      modelColor: temporaries.modelColor,
-      normal: temporaries.normal,
-      normalToCamera: temporaries.normalToCamera,
-      lightContribution: temporaries.lightContribution,
-      ambientConstant: temporaries.ambientConstant
+    directionalLightPositions: {
+      source: types.makeGLSLVariable(identifiers.uniforms.directionalLightPositions, 'vec3', true, maxNumDirLights),
+      sourceType: types.ShaderDataSource.Uniform
     },
-    uniforms: {
-      ambientConstant: types.makeGLSLVariable(uniforms.ambientConstant, 'float'),
-      roughness: types.makeGLSLVariable(uniforms.roughness, 'float'),
-      metallic: types.makeGLSLVariable(uniforms.metallic, 'float'),
-      directionalLightPositions: types.makeGLSLVariable(uniforms.directionalLightPositions, 'vec3', true, maxDirLights),
-      directionalLightColors: types.makeGLSLVariable(uniforms.directionalLightColors, 'vec3', true, maxDirLights),
-      pointLightPositions: types.makeGLSLVariable(uniforms.pointLightPositions, 'vec3', true, maxPointLights),
-      pointLightColors: types.makeGLSLVariable(uniforms.pointLightColors, 'vec3', true, maxPointLights),
-      modelColor: types.makeGLSLVariable(uniforms.modelColor, 'vec3'),
-      cameraPosition: types.makeGLSLVariable(uniforms.cameraPosition, 'vec3')
+    directionalLightColors: {
+      source: types.makeGLSLVariable(identifiers.uniforms.directionalLightColors, 'vec3', true, maxNumDirLights),
+      sourceType: types.ShaderDataSource.Uniform
     },
-    sampler2DCoordinates: varyings.uv,
-    conditionallyRequireForMaterial: []
-  }
+    pointLightPositions: {
+      source: types.makeGLSLVariable(identifiers.uniforms.pointLightPositions, 'vec3', true, maxNumPointLights),
+      sourceType: types.ShaderDataSource.Uniform
+    },
+    pointLightColors: {
+      source: types.makeGLSLVariable(identifiers.uniforms.pointLightColors, 'vec3', true, maxNumPointLights),
+      sourceType: types.ShaderDataSource.Uniform
+    }
+  };
 }
 
-const PhysicalFragmentRequirements = makePhysicalFragmentRequirements(types.DefaultShaderIdentifiers);
-const PhysicalVertexRequirements = makePhysicalVertexRequirements(types.DefaultShaderIdentifiers);
+function makeInputOutletDefaults(identifiers: types.ShaderIdentifierMap): PhysicalComponentInputOutlet {
+  return {
+    roughness: identifiers.temporaries.roughness,
+    metallic: identifiers.temporaries.metallic,
+    ambientConstant: identifiers.temporaries.ambientConstant,
+    modelColor: identifiers.temporaries.modelColor,
+    normal: identifiers.temporaries.normal,
+    cameraPosition: identifiers.temporaries.cameraPosition,
+    position: identifiers.temporaries.position
+  };
+}
+
+function makeOutputOutletDefaults(identifiers: types.ShaderIdentifierMap): PhysicalComponentOutputOutlet {
+  return {
+    modelColor: identifiers.temporaries.modelColor
+  };
+}
+
+export function makeInputPlugDefaults(identifiers?: types.ShaderIdentifierMap): PhysicalComponentInputPlug {
+  if (identifiers === undefined) {
+    identifiers = types.DefaultShaderIdentifiers;
+  }
+
+  return {
+    roughness: {
+      source: types.makeGLSLVariable(identifiers.uniforms.roughness, 'float'),
+      sourceType: types.ShaderDataSource.Uniform
+    },
+    metallic: {
+      source: types.makeGLSLVariable(identifiers.uniforms.metallic, 'float'),
+      sourceType: types.ShaderDataSource.Uniform
+    },
+    ambientConstant: {
+      source: types.makeGLSLVariable(identifiers.uniforms.ambientConstant, 'float'),
+      sourceType: types.ShaderDataSource.Uniform
+    },
+    modelColor: {
+      source: types.makeGLSLVariable(identifiers.uniforms.modelColor, 'vec3'),
+      sourceType: types.ShaderDataSource.Uniform
+    },
+    normal: {
+      source: types.makeGLSLVariable(identifiers.varyings.normal, 'vec3'),
+      sourceType: types.ShaderDataSource.Varying
+    },
+    position: {
+      source: types.makeGLSLVariable(identifiers.varyings.position, 'vec3'),
+      sourceType: types.ShaderDataSource.Varying
+    },
+    cameraPosition: {
+      source: types.makeGLSLVariable(identifiers.uniforms.cameraPosition, 'vec3'),
+      sourceType: types.ShaderDataSource.Uniform
+    },
+  };
+}
+
+function makeOutputPlugDefaults(identifiers: types.ShaderIdentifierMap): PhysicalComponentOutputPlug {
+  return {
+    modelColor: {
+      source: identifiers.temporaries.modelColor,
+      sourceType: types.ShaderDataSource.Temporary
+    }
+  };
+}
 
 function pbrDeclaration(): string {
   return `
@@ -156,94 +244,78 @@ function pbrDeclaration(): string {
 		}`;
 }
 
-function physicalPointLightLoop(identifiers: types.ShaderIdentifierMap): string {
+function physicalPointLightLoop(inputs: PhysicalComponentInputOutlet, outputs: PhysicalComponentOutputOutlet, 
+  statics: PhysicalComponentStatics, temporaries: PhysicalComponentTemporaries): string {
   const maxNumLights = types.ShaderLimits.maxNumUniformPointLights;
-  const temporaries = identifiers.temporaries;
-  const varyings = identifiers.varyings;
-  const uniforms = identifiers.uniforms;
 
   return `
   for (int i = 0; i < ${maxNumLights}; i++) {
     ${temporaries.lightContribution.identifier} += PBR(
-      ${temporaries.normal.identifier},
-      ${temporaries.modelColor.identifier},
-      ${temporaries.roughness.identifier},
-      ${temporaries.metallic.identifier},
-      ${uniforms.cameraPosition},
-      ${varyings.position},
-      ${uniforms.pointLightPositions}[i],
-      ${uniforms.pointLightColors}[i],
+      ${inputs.normal.identifier},
+      ${inputs.modelColor.identifier},
+      ${inputs.roughness.identifier},
+      ${inputs.metallic.identifier},
+      ${inputs.cameraPosition.identifier},
+      ${inputs.position.identifier},
+      ${statics.pointLightPositions.source.identifier}[i],
+      ${statics.pointLightColors.source.identifier}[i],
       false);
   }`;
 }
 
-function physicalDirectionalLightLoop(identifiers: types.ShaderIdentifierMap): string {
+function physicalDirectionalLightLoop(inputs: PhysicalComponentInputOutlet, outputs: PhysicalComponentOutputOutlet, 
+  statics: PhysicalComponentStatics, temporaries: PhysicalComponentTemporaries): string {
   const maxNumLights = types.ShaderLimits.maxNumUniformDirectionalLights;
-  const temporaries = identifiers.temporaries;
-  const varyings = identifiers.varyings;
-  const uniforms = identifiers.uniforms;
 
   return `
   for (int i = 0; i < ${maxNumLights}; i++) {
     ${temporaries.lightContribution.identifier} += PBR(
-      ${temporaries.normal.identifier},
-      ${temporaries.modelColor.identifier},
-      ${temporaries.roughness.identifier},
-      ${temporaries.metallic.identifier},
-      ${uniforms.cameraPosition},
-      ${varyings.position},
-      ${uniforms.directionalLightPositions}[i],
-      ${uniforms.directionalLightColors}[i],
-      true);
+      ${inputs.normal.identifier},
+      ${inputs.modelColor.identifier},
+      ${inputs.roughness.identifier},
+      ${inputs.metallic.identifier},
+      ${inputs.cameraPosition.identifier},
+      ${inputs.position.identifier},
+      ${statics.directionalLightPositions.source.identifier}[i],
+      ${statics.directionalLightColors.source.identifier}[i],
+      false);
   }`;
 }
 
-function physicalFragmentLightingBody(identifiers: types.ShaderIdentifierMap): string {
-  const temporaries = identifiers.temporaries;
-  const varyings = identifiers.varyings;
+function physicalFragmentLightingBody(inputs: PhysicalComponentInputOutlet, outputs: PhysicalComponentOutputOutlet, 
+  statics: PhysicalComponentStatics, temporaries: PhysicalComponentTemporaries): string {
+  
   const lightContrib = temporaries.lightContribution.identifier;
-
-  // `
-	// 		${resType} ${finalColor} = ${ambientName} + ${loName};
-	// 		${finalColor} = ${finalColor} / (${finalColor} + ${resType}(1.0));
-	// 		${finalColor} = pow(${finalColor}, ${resType}(1.0/2.2));`
+  const ambientConstant = inputs.ambientConstant.identifier;
+  const inputModelColor = inputs.modelColor.identifier;
+  const outputModelColor = outputs.modelColor.identifier;
 
   return `
-  ${temporaries.normal.identifier} = normalize(${varyings.normal});
-  ${physicalPointLightLoop(identifiers)}
-  ${physicalDirectionalLightLoop(identifiers)}
-  ${lightContrib} = ${lightContrib} + ${temporaries.ambientConstant.identifier} * ${temporaries.modelColor.identifier};
-  ${lightContrib} = ${lightContrib} / (${lightContrib} + vec3(1.0));
-  ${lightContrib} = pow(${lightContrib}, vec3(1.0/2.2));
-  gl_FragColor = vec4(${lightContrib}, 1.0);`;
+  ${inputs.normal.identifier} = normalize(${inputs.normal.identifier});
+  ${physicalPointLightLoop(inputs, outputs, statics, temporaries)}
+  ${physicalDirectionalLightLoop(inputs, outputs, statics, temporaries)}
+  ${outputModelColor} = ${lightContrib} + ${ambientConstant} * ${inputModelColor};
+  ${outputModelColor} = ${outputModelColor} / (${outputModelColor} + vec3(1.0));
+  ${outputModelColor} = pow(${outputModelColor}, vec3(1.0/2.2));
+  gl_FragColor = vec4(${outputModelColor}, 1.0);`;
 }
 
 export function applyPhysicalVertexPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {
-  let requirements: types.ShaderRequirements;
-
-  if (identifiers === undefined) {
-    identifiers = types.DefaultShaderIdentifiers;
-    requirements = PhysicalVertexRequirements;
-  } else {
-    requirements = makePhysicalVertexRequirements(identifiers);
-  }
-
-  addRequirements(toSchema, requirements, forMaterial);
+  //
 }
 
 
-export function applyPhysicalFragmentPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {
-  let requirements: types.ShaderRequirements;
+export function applyPhysicalFragmentPipeline(toSchema: types.ShaderSchema, forMaterial: Material, plugInputs: PhysicalComponentInputPlug): void {
+  const inputs = DefaultPhysicalOutletInputs;
+  const outputs = DefaultPhysicalOutletOutputs;
+  const statics = DefaultPhysicalStatics;
+  const temporaries = DefaultPhysicalTemporaries;
 
-  if (identifiers === undefined) {
-    identifiers = types.DefaultShaderIdentifiers;
-    requirements = PhysicalFragmentRequirements;
-  } else {
-    requirements = makePhysicalFragmentRequirements(identifiers);
-  }
+  applyMaterial(plugInputs, forMaterial);
+  connect(toSchema, plugInputs, inputs);
+  requireTemporaries(toSchema, temporaries);
+  requireStatics(toSchema, statics);
 
-  addRequirements(toSchema, requirements, forMaterial);
-  
   toSchema.head.push(pbrDeclaration);
-  toSchema.body.push(() => physicalFragmentLightingBody(identifiers));
+  toSchema.body.push(() => physicalFragmentLightingBody(inputs, outputs, statics, temporaries));
 }

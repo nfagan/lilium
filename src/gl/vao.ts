@@ -163,6 +163,7 @@ export class Ebo {
 export class Vbo {
   private vbo: WebGLBuffer = null;
   private dataSize: number;
+  readonly id: number;
 
   constructor(gl: WebGLRenderingContext, descriptor: types.BufferDescriptor, data: PrimitiveTypedArray, drawType?: number) {
     if (drawType === undefined) {
@@ -209,6 +210,7 @@ export class Vbo {
     
     this.vbo = vbo;
     this.dataSize = data.length;
+    this.id = Vbo.ID++;
   }
 
   bind(gl: WebGLRenderingContext): void {
@@ -250,4 +252,6 @@ export class Vbo {
         return 0;
     }
   }
+
+  private static ID: number = 0;
 }

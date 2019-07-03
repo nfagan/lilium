@@ -1,7 +1,7 @@
 import * as wgl from '../src/gl';
 import { PlayerMovement, Player, WorldGrid, GrassTile, 
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
-  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError } from '../src/game';
+  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, WorldGridComponent } from '../src/game';
 import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage } from '../src/util';
 import { mat4 } from 'gl-matrix';
 
@@ -13,7 +13,7 @@ type Game = {
   playerMovement: PlayerMovement,
   controller: Controller,
   moveControls: PlayerMoveControls,
-  worldGrid: WorldGrid,
+  worldGrid: WorldGridComponent,
   player: Player,
   playerDrawable: wgl.Model,
   frameTimer: Stopwatch,
@@ -53,7 +53,7 @@ const GAME: Game = {
   scene: new wgl.Scene()
 };
 
-function makeWorldGrid(): WorldGrid {
+function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
   const gridDim = 50;
   const cellDims = [2, 0.5, 2];
   const maxNumInstances = gridDim * gridDim * 2;
@@ -61,9 +61,14 @@ function makeWorldGrid(): WorldGrid {
   const grid = new wgl.VoxelGrid([0, 0, 0], [gridDim, gridDim, gridDim], cellDims);
   const worldGrid = new WorldGrid(grid, maxNumInstances);
   const floorDim = Math.floor(gridDim/2);
-  worldGrid.fillGround(floorDim, floorDim);
 
-  return worldGrid;
+  const worldGridDrawable = new WorldGridDrawable(grid, renderContext, worldGrid.maxNumFilledCells);
+  worldGridDrawable.create();
+
+  const gridComponent = new WorldGridComponent(worldGrid, worldGridDrawable);
+  gridComponent.fillGround(floorDim, floorDim);
+
+  return gridComponent;
 }
 
 function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lightPos: wgl.types.Real3, lightColor: wgl.types.Real3): wgl.Model {
@@ -186,7 +191,11 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
   game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
 
-  renderer.render(game.scene, view, proj);
+  game.worldGrid.gridDrawable.update();
+  // game.worldGrid.gridDrawable.draw(view, proj, camera.position, sunPos, sunColor);
+  game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
+
+  renderer.render(game.scene, camera, view, proj);
 
   frameTimer.reset();
 }
@@ -223,7 +232,7 @@ export async function main() {
 
   const camera = wgl.debug.makeFollowCamera(renderContext.gl);
 
-  const worldGrid = makeWorldGrid();
+  const gridComponent = makeWorldGrid(renderContext);
 
   const airParticleResources = new AirParticleResources(5 * 1e3, '/sound/wind-a-short2.aac');
   await airParticleResources.load(audioContext, err => { console.log(err); });
@@ -235,12 +244,12 @@ export async function main() {
   await grassResources.load(audioContext, err => { console.log(err); });
 
   const grassComponent = new GrassComponent(renderContext, grassResources);
-  GAME.grassTileOptions.offsetY = worldGrid.voxelGrid.cellDimensions[1];
+  GAME.grassTileOptions.offsetY = gridComponent.worldGrid.voxelGrid.cellDimensions[1];
   grassComponent.create(GAME.grassTileOptions, GAME.grassModelOptions, GAME.grassTextureOptions);
 
   const playerDims = [1.01, 1.01, 1.01];
   const player = new Player(playerDims);
-  const playerMovement = new PlayerMovement(worldGrid.voxelGrid);
+  const playerMovement = new PlayerMovement(gridComponent.worldGrid.voxelGrid);
 
   let playerDrawable: wgl.Model = null;
 
@@ -270,7 +279,7 @@ export async function main() {
   GAME.playerMovement = playerMovement;
   GAME.player = player;
   GAME.frameTimer = new Stopwatch();
-  GAME.worldGrid = worldGrid;
+  GAME.worldGrid = gridComponent;
   GAME.airParticleComponent = airParticles;
   GAME.grassComponent = grassComponent;
   GAME.moveControls = new PlayerMoveControls(playerMovement, controller);

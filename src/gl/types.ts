@@ -1,6 +1,6 @@
 import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
 import { BuiltinRealArray, PrimitiveTypedArray } from '../util';
-import { Vao, RenderContext, Program, Texture2D, shaderBuilder } from '.';
+import { Vao, RenderContext, Program, Texture2D, shaderBuilder, types } from '.';
 import { Material } from './material';
 
 export type StringMap<T> = {
@@ -29,6 +29,27 @@ export const ShaderLimits = {
   maxNumUniformDirectionalLights: 3,
   maxNumUniformPointLights: 3
 };
+
+export const enum ShaderDataSource {
+  Attribute = 0,
+  Varying,
+  Uniform,
+  Temporary
+};
+
+export type ShaderComponentPlug = {
+  source: GLSLVariable,
+  sourceType: ShaderDataSource,
+  samplerSource?: ShaderComponentPlug
+}
+
+export type ShaderComponentOutlets = StringMap<GLSLVariable>;
+export type ShaderComponentPlugs = StringMap<ShaderComponentPlug>;
+export type ShaderComponentStatics = StringMap<ShaderComponentPlug>;
+
+// export function makeShaderComponentPlug(source: GLSLVariable, sourceType: ShaderDataSource, samplerSource?: ShaderComponentPlug): ShaderComponentPlug {
+//   return {source, sourceType, samplerSource};
+// }
 
 export type ShaderRequirements = {
   inputs: Array<GLSLVariable>,
@@ -72,6 +93,7 @@ type ShaderUniformMap = {
 export type ShaderTemporaryMap = {
   worldPosition: GLSLVariable
   normal: GLSLVariable,
+  position: GLSLVariable,
   normalToCamera: GLSLVariable,
   lightContribution: GLSLVariable,
   ambientConstant: GLSLVariable,
@@ -79,9 +101,14 @@ export type ShaderTemporaryMap = {
   specularConstant: GLSLVariable,
   specularPower: GLSLVariable,
   modelColor: GLSLVariable,
+  cameraPosition: GLSLVariable,
   uv: GLSLVariable,
   roughness: GLSLVariable,
-  metallic: GLSLVariable
+  metallic: GLSLVariable,
+  directionalLightPositions: GLSLVariable,
+  directionalLightColors: GLSLVariable,
+  pointLightPositions: GLSLVariable,
+  pointLightColors: GLSLVariable,
 };
 
 export type ShaderIdentifierMap = {
@@ -91,49 +118,59 @@ export type ShaderIdentifierMap = {
   temporaries: ShaderTemporaryMap,
 }
 
-export const DefaultShaderIdentifiers: ShaderIdentifierMap = {
-  attributes: {
-    position: 'a_position',
-    normal: 'a_normal',
-    uv: 'a_uv'
-  },
-  varyings: {
-    position: 'v_position',
-    normal: 'v_normal',
-    uv: 'v_uv',
-  },
-  uniforms: {
-    model: 'model',
-    view: 'view',
-    projection: 'projection',
-    cameraPosition: 'camera_position',
-    directionalLightColors: 'directional_light_colors',
-    directionalLightPositions: 'directional_light_positions',
-    pointLightColors: 'point_light_colors',
-    pointLightPositions: 'point_light_positions',
-    modelColor: 'model_color',
-    ambientConstant: 'ambient_constant',
-    diffuseConstant: 'diffuse_constant',
-    specularConstant: 'specular_constant',
-    specularPower: 'specular_power',
-    roughness: 'roughness',
-    metallic: 'metallic'
-  },
-  temporaries: {
-    worldPosition: {identifier: 'world_position', type: 'vec4'},
-    normal: {identifier: 'normal', type: 'vec3'},
-    normalToCamera: {identifier: 'normal_to_camera', type: 'vec3'},
-    lightContribution: {identifier: 'light_contribution', type: 'vec3'},
-    ambientConstant: {identifier: 'ka', type: 'float'},
-    diffuseConstant: {identifier: 'kd', type: 'float'},
-    specularConstant: {identifier: 'ks', type: 'float'},
-    specularPower: {identifier: 'spec_pow', type: 'float'},
-    modelColor: {identifier: 'use_color', type: 'vec3'},
-    uv: {identifier: 'uv', type: 'vec2'},
-    roughness: {identifier: 'tmp_roughness', type: 'float'},
-    metallic: {identifier: 'tmp_metallic', type: 'float'}
-  }
-};
+export function makeDefaultShaderIdentifiers(): ShaderIdentifierMap {
+  return {
+    attributes: {
+      position: 'a_position',
+      normal: 'a_normal',
+      uv: 'a_uv'
+    },
+    varyings: {
+      position: 'v_position',
+      normal: 'v_normal',
+      uv: 'v_uv',
+    },
+    uniforms: {
+      model: 'model',
+      view: 'view',
+      projection: 'projection',
+      cameraPosition: 'camera_position',
+      directionalLightColors: 'directional_light_colors',
+      directionalLightPositions: 'directional_light_positions',
+      pointLightColors: 'point_light_colors',
+      pointLightPositions: 'point_light_positions',
+      modelColor: 'model_color',
+      ambientConstant: 'ambient_constant',
+      diffuseConstant: 'diffuse_constant',
+      specularConstant: 'specular_constant',
+      specularPower: 'specular_power',
+      roughness: 'roughness',
+      metallic: 'metallic'
+    },
+    temporaries: {
+      worldPosition: {identifier: 'world_position', type: 'vec4'},
+      normal: {identifier: 'normal', type: 'vec3'},
+      position: {identifier: 'position', type: 'vec3'},
+      normalToCamera: {identifier: 'normal_to_camera', type: 'vec3'},
+      cameraPosition: {identifier: 'tmp_camera_position', type: 'vec3'},
+      lightContribution: {identifier: 'light_contribution', type: 'vec3'},
+      ambientConstant: {identifier: 'ka', type: 'float'},
+      diffuseConstant: {identifier: 'kd', type: 'float'},
+      specularConstant: {identifier: 'ks', type: 'float'},
+      specularPower: {identifier: 'spec_pow', type: 'float'},
+      modelColor: {identifier: 'use_color', type: 'vec3'},
+      uv: {identifier: 'uv', type: 'vec2'},
+      roughness: {identifier: 'tmp_roughness', type: 'float'},
+      metallic: {identifier: 'tmp_metallic', type: 'float'},
+      directionalLightPositions: {identifier: 'tmp_directional_light_pos', type: 'vec3', isArray: true, arraySize: ShaderLimits.maxNumUniformDirectionalLights},
+      directionalLightColors: {identifier: 'tmp_directional_light_color', type: 'vec3', isArray: true, arraySize: ShaderLimits.maxNumUniformDirectionalLights},
+      pointLightPositions: {identifier: 'tmp_point_light_pos', type: 'vec3', isArray: true, arraySize: ShaderLimits.maxNumUniformPointLights},
+      pointLightColors: {identifier: 'tmp_point_light_colors', type: 'vec3', isArray: true, arraySize: ShaderLimits.maxNumUniformPointLights},
+    }
+  };
+}
+
+export const DefaultShaderIdentifiers = makeDefaultShaderIdentifiers();
 
 export type LightingModel = 'phong' | 'physical' | 'none';
 export const enum Lights {
@@ -243,6 +280,10 @@ export type GLSLVariable = {
   isArray?: boolean,
   arraySize?: number
 };
+
+export function makeAnonymousGLSLVariable(type: GLSLTypes, isArray?: boolean, arraySize?: number): GLSLVariable {
+  return {identifier: '', type, isArray, arraySize};
+}
 
 export function makeGLSLVariable(identifier: string, type: GLSLTypes, isArray?: boolean, arraySize?: number): GLSLVariable {
   return {identifier, type, isArray, arraySize};
@@ -430,6 +471,7 @@ export class ShaderSchema {
   attributes: Array<GLSLVariable>;
   varyings: Array<GLSLVariable>;
   uniforms: Array<GLSLVariable>;
+  temporaries: Array<GLSLVariable>;
   head: Array<() => string>;
   body: Array<() => string>;
 
@@ -440,6 +482,7 @@ export class ShaderSchema {
     this.attributes = [];
     this.varyings = [];
     this.uniforms = [];
+    this.temporaries = [];
     this.head = [];
     this.body = [];
   }
@@ -466,6 +509,10 @@ export class ShaderSchema {
     return this.hasIdentifierLinearSearch(name, this.attributes);
   }
 
+  hasTemporary(name: string): boolean {
+    return this.hasIdentifierLinearSearch(name, this.temporaries);
+  }
+
   addUniform(value: GLSLVariable): ShaderSchema {
     this.uniforms.push(value);
     return this;
@@ -478,6 +525,13 @@ export class ShaderSchema {
 
   addAttribute(value: GLSLVariable): ShaderSchema {
     this.attributes.push(value);
+    return this;
+  }
+
+  requireTemporary(value: GLSLVariable): ShaderSchema {
+    if (!this.hasTemporary(value.identifier)) {
+      this.temporaries.push(value);
+    }
     return this;
   }
 
@@ -521,6 +575,21 @@ export class ShaderSchema {
         break;
       case Shader.Fragment:
         console.error(`Fragment shader outputs are not supported. Ignoring "${value.identifier}".`);
+        break;
+    }
+    return this;
+  }
+
+  requireBySourceType(value: GLSLVariable, type: ShaderDataSource): ShaderSchema {
+    switch (type) {
+      case ShaderDataSource.Attribute:
+        this.requireAttribute(value);
+        break;
+      case ShaderDataSource.Varying:
+        this.requireVarying(value);
+        break;
+      case ShaderDataSource.Uniform:
+        this.requireUniform(value);
         break;
     }
     return this;
