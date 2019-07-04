@@ -1,16 +1,20 @@
 import { types, Program } from '.';
+import { Texture2D, Texture2DSet } from './texture';
 
 export class Material {
   readonly id: number;
-  readonly activeUniforms: Array<string>;
   readonly descriptor: types.MaterialDescriptor;
+  private activeUniforms: Array<string>;
   private schemaDidChange: boolean;
+  private textureSet: Texture2DSet;
 
   private constructor(descriptor: types.MaterialDescriptor) {
     this.id = Material.ID++;
     this.descriptor = descriptor;
     this.activeUniforms = this.getActiveUniforms();
     this.schemaDidChange = true;
+    this.textureSet = new Texture2DSet();
+    this.initializeTextureSet();
   }
 
   private getActiveUniforms(): Array<string> {
@@ -26,6 +30,23 @@ export class Material {
     }
 
     return activeUniforms;
+  }
+
+  private addTexture(tex: Texture2D): void {
+    this.textureSet.addTexture(tex);
+  }
+
+  private removeTexture(tex: Texture2D): void {
+    this.textureSet.removeTexture(tex as Texture2D);
+  }
+
+  private initializeTextureSet(): void {
+    const self = this;
+    this.useActiveUniforms((uniform, kind) => {
+      if (uniform.isTexture()) {
+        self.addTexture(uniform.value as Texture2D);
+      }
+    });
   }
 
   hasUniform(name: string): boolean {
@@ -59,24 +80,40 @@ export class Material {
     }
   }
 
-  hasTextureUniform(): boolean {
-    for (let i = 0; i < this.activeUniforms.length; i++) {
-      if (this.descriptor.uniforms[this.activeUniforms[i]].type === 'sampler2D') {
-        return true;
-      }
-    }
+  useTextures(cb: (tex: Texture2D) => void): void {
+    this.textureSet.useTextures(cb);
+  }
 
-    return false;
+  hasTextureUniform(): boolean {
+    return this.textureSet.size() > 0;
   }
 
   removeUnusedUniforms(inProg: Program): void {
     for (let i = 0; i < this.activeUniforms.length; i++) {
       const kind = this.activeUniforms[i];
-      const identifier = this.descriptor.uniforms[kind].identifier;
+      const uniform = this.descriptor.uniforms[kind];
+      const identifier = uniform.identifier;
 
       if (!inProg.isUniform(identifier)) {
         this.activeUniforms.splice(i, 1);
+
+        if (uniform.isTexture()) {
+          this.removeTexture(uniform.value as Texture2D);
+        }
       }
+    }
+  }
+
+  addUniformProperty(name: string, value: types.UniformValue): void {
+    const hadUniform = this.hasUniform(name);
+    this.descriptor.uniforms[name] = value;
+
+    if (!hadUniform) {
+      this.activeUniforms.push(name);
+    }
+
+    if (value.isTexture()) {
+      this.addTexture(value.value as Texture2D);
     }
   }
 
@@ -89,9 +126,20 @@ export class Material {
     }
 
     const uniform = uniforms[name];
-    uniform.set(value, numChannels);
+    const prevType = uniform.type;
+    const prevValue = uniform.value;
 
-    this.schemaDidChange = uniform.isNewType();
+    uniform.set(value, numChannels);
+    const isNewType = uniform.isNewType();
+
+    if (uniform.isTexture()) {
+      this.addTexture(uniform.value as Texture2D);
+
+    } else if (isNewType && prevType === 'sampler2D') {
+      this.removeTexture(prevValue as Texture2D);
+    }
+
+    this.schemaDidChange = isNewType;
   }
 
   isNewSchema(): boolean {

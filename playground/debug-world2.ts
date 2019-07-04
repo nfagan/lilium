@@ -393,6 +393,8 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
     return;
   }
 
+  particles.init(gl, audioContext);
+
   const airParticleResources = new AirParticleResources(10000, '/sound/wind-a-short2.aac');
   await airParticleResources.load(audioContext, err => {
     console.log(err);
@@ -954,12 +956,15 @@ function renderLoop(gl: WebGLRenderingContext, programs: Programs, camera: Follo
   updateVoxelInstances(gl, voxelGridInfo, drawables.instancedCube);
   drawInstancedVoxelGrid(gl, programs, camera, drawables, sun, voxelGridInfo, view, proj);
 
-  grassTextures.update(player.aabb, 1, 1, 1);
+  grassTextures.update(dt, player.aabb, 1, 1, 1);
   handleGrassDrawing(gl, programs, camera, drawables, grassTextures, sun, view, proj);
 
   drawSky(gl, programs.sky, drawables.skySphere, textures.skyColor, view, proj, voxelGridInfo.grid);
 
-  GAME_STATE.airParticleComponent.update(dt, player.aabb);
+  particles.update(gl, player.aabb);
+  particles.render(gl, camera, view, proj, sun);
+
+  // GAME_STATE.airParticleComponent.update(dt, player.aabb);
   // GAME_STATE.airParticleComponent.draw(camera.position, view, proj, sun.position, sun.color);
 
   // particles.update(gl, player.aabb);

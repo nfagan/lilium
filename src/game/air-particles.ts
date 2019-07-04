@@ -92,18 +92,23 @@ class AirParticleData {
     const numParticles = this.numParticles;
     const noiseSamplers = this.noiseSamplers;
 
+    const dtRatio = math.dtSecRatio(dt);
+    const sampleIncrement = math.dtSecSampleIncrement(dt);
+    const dtFactor = Math.max(dtRatio, 1);
+
     const twoPi = Math.PI * 2;
 
     for (let i = 0; i < numParticles; i++) {
-      const noiseSample = noiseSamplers[i].nextSample();
+      // const noiseSample = noiseSamplers[i].nextSample();
+      const noiseSample = noiseSamplers[i].nthNextSample(sampleIncrement);
       const halfNoiseSample = noiseSample - 0.5;
       const ind3 = i * 3;
 
-      translations[ind3+0] += (halfNoiseSample * 0.05 + 0.02) * normX;
-      translations[ind3+1] += halfNoiseSample * 0.01;
-      translations[ind3+2] += (halfNoiseSample * 0.05 + 0.02) * normZ;
+      translations[ind3+0] += (halfNoiseSample * 0.05 + 0.02) * normX * dtFactor;
+      translations[ind3+1] += halfNoiseSample * 0.01 * dtFactor;
+      translations[ind3+2] += (halfNoiseSample * 0.05 + 0.02) * normZ * dtFactor;
 
-      alphas[i] += alphaSigns[i] * 0.01 * noiseSample;
+      alphas[i] += alphaSigns[i] * 0.01 * noiseSample * dtFactor;
 
       if (alphas[i] < 0) {
         alphas[i] = 0;
@@ -118,8 +123,8 @@ class AirParticleData {
         alphaSigns[i] = -1;
       }
 
-      rotations[ind3] += 0.01 * noiseSample * 2;
-      rotations[ind3+1] += 0.005 * halfNoiseSample;
+      rotations[ind3] += 0.01 * noiseSample * 2 * dtFactor;
+      rotations[ind3+1] += 0.005 * halfNoiseSample * dtFactor;
 
       for (let j = 0; j < 3; j++) {
         const rot = rotations[ind3 + j];
@@ -243,8 +248,8 @@ export class AirParticles {
 
     drawable.mode = gl.TRIANGLES;
     drawable.count = indices.length;
-    drawable.offset = 0;
     drawable.type = gl.UNSIGNED_SHORT;
+    drawable.offset = 0;
     drawable.numActiveInstances = numParticles;
     drawable.isInstanced = true;
 

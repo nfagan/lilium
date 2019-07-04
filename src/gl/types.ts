@@ -1,7 +1,6 @@
 import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
 import { BuiltinRealArray, PrimitiveTypedArray } from '../util';
-import { Vao, RenderContext, Program, Texture2D, shaderBuilder, types } from '.';
-import { Material } from './material';
+import { Vao, RenderContext, Program, Texture2D, Material } from '.';
 
 export type StringMap<T> = {
   [k: string]: T
@@ -34,22 +33,111 @@ export const enum ShaderDataSource {
   Attribute = 0,
   Varying,
   Uniform,
-  Temporary
+  Temporary,
 };
 
-export type ShaderComponentPlug = {
-  source: GLSLVariable,
-  sourceType: ShaderDataSource,
-  samplerSource?: ShaderComponentPlug
+export function makeConcreteComponentPlug(source: GLSLVariable, sourceType: ShaderDataSource, samplerSource?: ShaderComponentPlug): ShaderComponentPlug {
+  const plug = new ShaderComponentPlug();
+  plug.setConcreteSource(source, sourceType, samplerSource);
+  return plug;
+}
+
+export class ShaderComponentPlug {
+  readonly id: number;
+  private source: GLSLVariable | ShaderComponentPlug;
+  private sourceType: ShaderDataSource;
+  private samplerSource?: ShaderComponentPlug;
+
+  constructor() {
+    this.id = ShaderComponentPlug.ID++;
+    this.source = null;
+  }
+
+  connectTo(source: ShaderComponentPlug): void {
+    if (this.hasCyclicReference(source)) {
+      throw new Error('Connecting this source would create a cyclic dependency between components.');
+    }
+
+    source.source = this;
+  }
+
+  setConcreteSource(source: GLSLVariable, sourceType: ShaderDataSource, samplerSource?: ShaderComponentPlug): void {
+    this.source = source;
+    this.sourceType = sourceType;
+    this.samplerSource = samplerSource;
+  }
+
+  getSource(): GLSLVariable {
+    this.assertHasSource();
+    return this.getRootPlug().source as GLSLVariable;
+  }
+
+  getSourceType(): ShaderDataSource {
+    this.assertHasSource();
+    return this.getRootPlug().sourceType;
+  }
+
+  getSamplerSource(): ShaderComponentPlug {
+    this.assertHasSource();
+    return this.getRootPlug().samplerSource;
+  }
+
+  private getRootPlug(): ShaderComponentPlug {
+    let prev: ShaderComponentPlug = this;
+    let src = this.source;
+
+    while (ShaderComponentPlug.isShaderComponentPlug(src)) {
+      prev = src as ShaderComponentPlug;
+      src = (<ShaderComponentPlug>src).source;
+    }
+
+    return prev;
+  }
+
+  private assertHasSource(): void {
+    if (this.source === null) {
+      throw new Error('No source has yet been set.');
+    }
+  }
+
+  private static isShaderComponentPlug(source: GLSLVariable | ShaderComponentPlug): boolean {
+    return source instanceof ShaderComponentPlug;
+  }
+
+  private hasCyclicReference(source: GLSLVariable | ShaderComponentPlug): boolean {
+    const isPlug = ShaderComponentPlug.isShaderComponentPlug;
+
+    if (!isPlug(source) || !isPlug(this.source)) {
+      return false;
+    }
+
+    let newSource = source as ShaderComponentPlug;
+    let selfSource = this.source as ShaderComponentPlug;
+    
+    const visitedIds: {[k: number]: number} = {};
+    
+    while (isPlug(selfSource)) {
+      visitedIds[selfSource.id] = 0;
+      selfSource = selfSource.source as ShaderComponentPlug;
+    }
+
+    while (isPlug(newSource)) {
+      if (visitedIds[newSource.id] !== undefined) {
+        return true;
+      }
+      visitedIds[newSource.id] = 0;
+      newSource = newSource.source as ShaderComponentPlug;
+    }
+
+    return false;
+  }
+
+  private static ID: number = 0;
 }
 
 export type ShaderComponentOutlets = StringMap<GLSLVariable>;
 export type ShaderComponentPlugs = StringMap<ShaderComponentPlug>;
 export type ShaderComponentStatics = StringMap<ShaderComponentPlug>;
-
-// export function makeShaderComponentPlug(source: GLSLVariable, sourceType: ShaderDataSource, samplerSource?: ShaderComponentPlug): ShaderComponentPlug {
-//   return {source, sourceType, samplerSource};
-// }
 
 export type ShaderRequirements = {
   inputs: Array<GLSLVariable>,
@@ -198,6 +286,10 @@ export class UniformValue {
     this.allowNewType = true;
   }
 
+  isTexture(): boolean {
+    return this.type === 'sampler2D';
+  }
+
   isNewType(): boolean {
     return this.typeChanged;
   }
@@ -217,7 +309,6 @@ export class UniformValue {
 
     if (isNewType && !this.allowNewType) {
       console.error(`Cannot overwrite value of original type "${this.type}" with value of new type "${newType}".`);
-      return;
     }
 
     this.typeChanged = isNewType;
@@ -393,6 +484,10 @@ export function makeAttribute(name: string, type: number, size: number, divisor?
 
 export function makeFloatAttribute(gl: WebGLRenderingContext, name: string, size: number, divisor?: number): AttributeDescriptor {
   return makeAttribute(name, gl.FLOAT, size, divisor);
+}
+
+export function makeFloat2Attribute(gl: WebGLRenderingContext, name: string, divisor?: number): AttributeDescriptor {
+  return makeFloatAttribute(gl, name, 2, divisor);
 }
 
 export function makeFloat3Attribute(gl: WebGLRenderingContext, name: string, divisor?: number): AttributeDescriptor {

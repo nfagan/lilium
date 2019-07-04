@@ -2,7 +2,7 @@ import * as wgl from '../src/gl';
 import { PlayerMovement, Player, WorldGrid, GrassTile, 
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
   AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, WorldGridComponent } from '../src/game';
-import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage } from '../src/util';
+import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage, loadImage } from '../src/util';
 import { mat4 } from 'gl-matrix';
 
 type Game = {
@@ -26,6 +26,11 @@ type Game = {
   scene: wgl.Scene
 };
 
+// sun: {
+//   position: [50, 20, 50],
+//   color: [1, 1, 1]
+// },
+
 const GAME: Game = {
   mouse: wgl.debug.makeDebugMouseState(),
   keyboard: new wgl.Keyboard(),
@@ -38,7 +43,8 @@ const GAME: Game = {
   player: null,
   playerDrawable: null,
   frameTimer: null,
-  sunPosition: [8, 10, 8],
+  // sunPosition: [8, 10, 8],
+  sunPosition: [50, 20, 50],
   sunColor: [1, 1, 1],
   grassTileOptions: {
     density: 0.1,
@@ -92,6 +98,61 @@ function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lig
 
   const model = new wgl.Model(drawable, mat);
   model.transform.translate(lightPos);
+  return model;
+}
+
+async function makeSkyTexture(gl: WebGLRenderingContext): Promise<wgl.Texture2D> {
+  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 10000);
+  const tex = new wgl.Texture2D(gl);
+
+  tex.minFilter = gl.LINEAR;
+  tex.magFilter = gl.LINEAR;
+  tex.wrapS = gl.REPEAT;
+  tex.wrapT = gl.REPEAT;
+  tex.internalFormat = gl.RGBA;
+  tex.srcFormat = gl.RGBA;
+  tex.srcType = gl.UNSIGNED_BYTE;
+  tex.level = 0;
+  tex.border = 0;
+  tex.width = img.width;
+  tex.height = img.height;
+
+  tex.bind();
+  tex.configure();
+  tex.fillImageElement(img);
+
+  return tex;
+}
+
+async function makeSkyDome(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
+  const gl = renderContext.gl;
+
+  const tex = await makeSkyTexture(gl);
+
+  const attrs = [
+    wgl.types.makeFloat3Attribute(gl, 'a_position'),
+    wgl.types.makeFloat2Attribute(gl, 'a_uv'),
+    wgl.types.makeFloat3Attribute(gl, 'a_normal'),
+  ];
+
+  const sphereData = wgl.geometry.sphereInterleavedDataAndIndices();
+  const vboDescriptor = wgl.types.makeAnonymousVboDescriptor(attrs, sphereData.vertexData)
+  const eboDescriptor = wgl.types.makeAnonymousEboDescriptor(sphereData.indices);
+
+  const mat = wgl.Material.NoLight();
+  mat.setUniformProperty('modelColor', tex);
+
+  const prog = renderer.requireProgram(mat);
+  const vao = wgl.Vao.fromDescriptors(gl, prog, [vboDescriptor], eboDescriptor);
+
+  const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
+  drawable.mode = gl.TRIANGLE_STRIP;
+  drawable.count = eboDescriptor.indices.length;
+
+  const model = new wgl.Model(drawable, mat);
+  model.transform.translate([10, 2, 10]);
+  model.transform.scale(100);
+
   return model;
 }
 
@@ -185,17 +246,19 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const sunPos = game.sunPosition;
   const sunColor = game.sunColor;
 
+  renderer.render(game.scene, camera, view, proj);
+
+  game.worldGrid.gridDrawable.update();
+  game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
+
   game.grassComponent.update(dt, playerAabb);
   game.airParticleComponent.update(dt, playerAabb);
 
   game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
   game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
 
-  game.worldGrid.gridDrawable.update();
-  // game.worldGrid.gridDrawable.draw(view, proj, camera.position, sunPos, sunColor);
-  game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
-
-  renderer.render(game.scene, camera, view, proj);
+  // game.worldGrid.gridDrawable.update();
+  // game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
 
   frameTimer.reset();
 }
@@ -260,6 +323,8 @@ export async function main() {
     return;
   }
 
+  const skyDome = await makeSkyDome(renderer, renderContext);
+
   const sun = wgl.Light.Directional();
   sun.setUniformProperty('color', GAME.sunColor);
   sun.setUniformProperty('position', GAME.sunPosition);
@@ -286,6 +351,7 @@ export async function main() {
   GAME.controller = controller;
   GAME.playerDrawable = playerDrawable;
   GAME.scene.addModel(playerDrawable);
+  GAME.scene.addModel(skyDome);
   GAME.scene.addLight(sun);
 
   function renderLoop() {

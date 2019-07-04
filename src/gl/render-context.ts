@@ -1,5 +1,6 @@
 import { Vao, Vbo } from './vao';
 import { Program } from './program';
+import { Texture2D } from './texture';
 
 export class RenderContext {
   gl: WebGLRenderingContext;
@@ -9,6 +10,8 @@ export class RenderContext {
   private boundVao: Vao;
   private boundVbo: Vbo;
   private boundProgram: Program;
+  private boundTexture2D: Texture2D;
+  private numActiveTextures: number;
 
   constructor(gl: WebGLRenderingContext) {
     this.gl = gl;
@@ -16,6 +19,37 @@ export class RenderContext {
     this.boundVao = null;
     this.boundVbo = null;
     this.boundProgram = null;
+    this.boundTexture2D = null;
+    this.numActiveTextures = 0;
+  }
+
+  pushActiveTexture2DAndBind(tex: Texture2D): boolean {
+    if (!this.isBoundTexture2D(tex)) {
+      tex.index = this.numActiveTextures++;
+      tex.activateAndBind();
+      this.boundTexture2D = tex;
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  popTexture2D(): void {
+    this.numActiveTextures--;
+  }
+
+  private isBoundTexture2D(tex: Texture2D): boolean {
+    return this.boundTexture2D !== null && this.boundTexture2D.id === tex.id;
+  }
+
+  bindTexture2D(tex: Texture2D): boolean {
+    if (!this.isBoundTexture2D(tex)) {
+      tex.bind();
+      this.boundTexture2D = tex;
+      return true;
+    } else {
+      return false;
+    }
   }
 
   bindVao(vao: Vao): boolean {

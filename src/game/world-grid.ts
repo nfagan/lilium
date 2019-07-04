@@ -62,18 +62,23 @@ export class WorldGridDrawable {
   private makeProgram(gl: WebGLRenderingContext): Program {
     const mat = this.material;
 
-    const plugInputs = shaderBuilder.physical.makeInputPlugDefaults();
-    plugInputs.modelColor.source.identifier = 'v_color';
-    plugInputs.modelColor.sourceType = types.ShaderDataSource.Varying;
+    const plugInputs = shaderBuilder.physical.makeDefaultInputPlug();
+    const plugOutputs = shaderBuilder.physical.makeDefaultOutputPlug();
+    const fragOutput = shaderBuilder.fragColor.makeDefaultInputPlug();
+
+    const src = types.makeConcreteComponentPlug(types.makeGLSLVariable('v_color', 'vec3'), types.ShaderDataSource.Varying);
+    plugInputs.modelColor = src;
+    plugOutputs.modelColor.connectTo(fragOutput.modelColor);
 
     const fragSchema = new types.ShaderSchema(types.Shader.Fragment);
-    shaderBuilder.physical.applyComponent(fragSchema, mat, plugInputs);
+    shaderBuilder.physical.applyComponent(fragSchema, mat, plugInputs, plugOutputs);
+    shaderBuilder.fragColor.applyComponent(fragSchema, mat, fragOutput);
 
     const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
     console.log(fragSource);
     
-    // const prog = Program.fromSources(gl, gridSources.vertex, gridSources.fragment);
     const prog = Program.fromSources(gl, gridSources.vertex, fragSource);
+    // const prog = Program.fromSources(gl, gridSources.vertex, gridSources)
 
     mat.removeUnusedUniforms(prog);
 
@@ -128,9 +133,12 @@ export class WorldGridDrawable {
     this.translationVbo.subData(gl, tmpArray, byteOffset);
   
     for (let i = 0; i < numToUpdate; i++) {  
-      tmpArray[i*3+0] = 0;
-      tmpArray[i*3+1] = 0.45;
-      tmpArray[i*3+2] = 0.02;
+      // tmpArray[i*3+0] = 0;
+      // tmpArray[i*3+1] = 0.45;
+      // tmpArray[i*3+2] = 0.02;
+      tmpArray[i*3+0] = 1;
+      tmpArray[i*3+1] = 1;
+      tmpArray[i*3+2] = 1;
     }
 
     this.colorVbo.bind(gl);
@@ -140,21 +148,24 @@ export class WorldGridDrawable {
 
   draw(view: mat4, proj: mat4, camPos: types.Real3, scene: Scene): void {
     const cellDims = this.grid.cellDimensions;
+    const mat = this.material;
+    const prog = this.program;
 
-    this.material.setUniformProperty('roughness', 2);
-    this.material.setUniformProperty('metallic', 0);
+    mat.setUniformProperty('ambientConstant', 2);
+    // mat.setUniformProperty('roughness', 2);
+    // mat.setUniformProperty('metallic', 0);
 
-    this.renderContext.useProgram(this.program);
-    this.material.setUniforms(this.program);
+    this.renderContext.useProgram(prog);
+    mat.setUniforms(prog);
 
-    this.program.setMat4('view', view);
-    this.program.setMat4('projection', proj);
-    this.program.setVec3(types.DefaultShaderIdentifiers.uniforms.cameraPosition, camPos);
+    prog.setMat4('view', view);
+    prog.setMat4('projection', proj);
+    prog.setVec3(types.DefaultShaderIdentifiers.uniforms.cameraPosition, camPos);
 
-    this.program.set3f('scale', cellDims[0]/2, cellDims[1]/2, cellDims[2]/2);
+    prog.set3f('scale', cellDims[0]/2, cellDims[1]/2, cellDims[2]/2);
 
     for (let i = 0; i < scene.lights.length; i++) {
-      scene.lights[i].setUniforms(this.program);
+      scene.lights[i].setUniforms(prog);
     }
 
     this.renderContext.bindVao(this.drawable.vao);

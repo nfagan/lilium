@@ -3,6 +3,7 @@ import * as phong from './phong';
 import * as noLight from './no-light';
 import * as geometry from './geometry';
 import * as physical from './physical';
+import * as fragColor from './frag-color';
 import { Program } from '../program';
 import { Material } from '../material';
 import { shaderSchemaToString } from './common';
@@ -69,7 +70,8 @@ export class ProgramBuilder {
         phong.applyPhongFragmentPipeline(fragSchema, forMaterial);
         break;
       case 'physical':
-        physical.applyComponent(fragSchema, forMaterial, physical.makeInputPlugDefaults());
+        physical.applyComponent(fragSchema, forMaterial, physical.makeDefaultInputPlug(), physical.makeDefaultOutputPlug());
+        fragColor.applyComponent(fragSchema, forMaterial, fragColor.makeDefaultInputPlug());
         break;
       case 'none':
         noLight.applyNoLightVertexPipeline(vertSchema, forMaterial);

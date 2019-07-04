@@ -6,6 +6,7 @@ import { Scene } from './scene';
 import { mat4 } from 'gl-matrix';
 import { types } from '.';
 import { ICamera } from './camera';
+import { Texture2D } from './texture';
 
 export class Renderer {
   identifiers: types.ShaderIdentifierMap;
@@ -13,12 +14,16 @@ export class Renderer {
   private renderContext: RenderContext;
   private programBuilder: ProgramBuilder;
   private programsByMaterialId: Map<number, Program>;
+  private textureSetter: (tex: Texture2D) => void;
+  private textureFinisher: (tex: Texture2D) => void;
 
   constructor(renderContext: RenderContext) {
     this.renderContext = renderContext;
     this.programBuilder = new ProgramBuilder(renderContext.gl);
     this.programsByMaterialId = new Map();
     this.identifiers = types.DefaultShaderIdentifiers;
+    this.textureSetter = tex => textureSetter(this.renderContext, tex);
+    this.textureFinisher = tex => textureFinisher(this.renderContext, tex);
   }
 
   render(scene: Scene, camera: ICamera, view: mat4, proj: mat4): void {
@@ -46,11 +51,14 @@ export class Renderer {
       progForMaterial.setMat4(identifiers.uniforms.view, view);
       progForMaterial.setMat4(identifiers.uniforms.projection, proj);
 
+      material.useTextures(this.textureSetter);
       material.setUniforms(progForMaterial);
-      material.clearIsNewSchema();
 
       renderContext.bindVao(drawComponent.vao);
       drawComponent.draw();
+
+      material.useTextures(this.textureFinisher);
+      material.clearIsNewSchema();
     }
   }
 
@@ -64,4 +72,12 @@ export class Renderer {
 
     return progForMaterial;
   }
+}
+
+function textureSetter(renderContext: RenderContext, texture: Texture2D): void {
+  renderContext.pushActiveTexture2DAndBind(texture);
+}
+
+function textureFinisher(renderContext: RenderContext, texture: Texture2D): void {
+  renderContext.popTexture2D();
 }

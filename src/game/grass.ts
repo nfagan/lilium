@@ -81,7 +81,7 @@ export class GrassTextureManager {
     this.windTexture = windTexture;
   }
 
-  update(playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
+  update(dt: number, playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
     if (!this.isCreated) {
       console.warn('Grass textures not yet created.');
       return;
@@ -127,14 +127,19 @@ export class GrassTextureManager {
     const midPixelX = (minX + fracWidth/2) * texWidth;
     const midPixelZ = (minZ + fracDepth/2) * texHeight;
 
-    const decayAmt = this.decayAmount;
+    const dtScaleRatio = Math.max(math.dtSecRatio(dt), 1);
+
+    const decayAmt = this.decayAmount * dtScaleRatio;
     const windVx = this.windVx;
     const windVz = this.windVz;
+
+    const sampleIncrement = math.dtSecSampleIncrement(dt);
 
     const numPixelsTexture = windTextureData.length / windTexture.numComponentsPerPixel();
 
     for (let i = 0; i < numPixelsTexture; i++) {
-      const sample = windAudioSamplers[i].nextSample();
+      // const sample = windAudioSamplers[i].nextSample();
+      const sample = windAudioSamplers[i].nthNextSample(sampleIncrement);
 
       const vx = (windVx + 1) * 0.5;
       const vz = (windVz + 1) * 0.5;
@@ -387,12 +392,15 @@ export class GrassDrawable {
 
     renderContext.useProgram(grassProg);
     debug.setViewProjection(grassProg, view, proj);
-  
-    grassTextures.windTexture.activateAndBind();
+
+    renderContext.pushActiveTexture2DAndBind(grassTextures.windTexture);
     grassProg.setTexture('wind_texture', grassTextures.windTexture.index);
   
-    grassTextures.velocityTexture.activateAndBind();
+    renderContext.pushActiveTexture2DAndBind(grassTextures.velocityTexture);
     grassProg.setTexture('velocity_texture', grassTextures.velocityTexture.index);
+
+    renderContext.popTexture2D();
+    renderContext.popTexture2D();
 
     const model = this.model;
     const invTransModel = this.inverseTransposeModel;
@@ -545,7 +553,7 @@ export class GrassComponent {
 
   update(dt: number, playerAabb: math.Aabb): void {
     const bladeHeight = this.grassDrawable.scale[1];
-    this.grassTextures.update(playerAabb, 1, 1, bladeHeight);
+    this.grassTextures.update(dt, playerAabb, 1, 1, bladeHeight);
   }
 
   render(renderContext: RenderContext, camera: ICamera, view: mat4, proj: mat4, sunPosition: types.Real3, sunColor: types.Real3) {

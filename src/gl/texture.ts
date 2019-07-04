@@ -1,21 +1,61 @@
 import * as types from '../util';
 
-export class Texture2D {
+interface TextureBase {
+  id: number;
+};
+
+class _TextureSet<T extends TextureBase> {
+  private textures: Map<number, T>
+
+  constructor() {
+    this.textures = new Map();
+  }
+
+  addTexture(tex: T): void {
+    this.textures.set(tex.id, tex);
+  }
+
+  removeTexture(tex: T): void {
+    this.textures.delete(tex.id);
+  }
+
+  completeSet(): IterableIterator<T> {
+    return this.textures.values();
+  }
+
+  useTextures(cb: (value: T) => void): void {
+    this.textures.forEach(cb);
+  }
+
+  size(): number {
+    return this.textures.size;
+  }
+}
+
+export class Texture2DSet extends _TextureSet<Texture2D> {
+  constructor() {
+    super();
+  }
+}
+
+export class Texture2D implements TextureBase {
   private gl: WebGLRenderingContext;
-  public minFilter: number;
-  public magFilter: number;
-  public wrapS: number;
-  public wrapT: number;
-  public level: number;
-  public width: number;
-  public height: number;
-  public border: number;
-  public internalFormat: number;
-  public srcFormat: number;
-  public srcType: number;
-  public texture: WebGLTexture;
-  public index: number;
-  public data: types.PrimitiveTypedArray;
+  readonly id: number;
+
+  minFilter: number;
+  magFilter: number;
+  wrapS: number;
+  wrapT: number;
+  level: number;
+  width: number;
+  height: number;
+  border: number;
+  internalFormat: number;
+  srcFormat: number;
+  srcType: number;
+  texture: WebGLTexture;
+  index: number;
+  data: types.PrimitiveTypedArray;
 
   constructor(gl: WebGLRenderingContext) {
     this.gl = gl;
@@ -33,6 +73,7 @@ export class Texture2D {
     this.texture = gl.createTexture();
     this.index = 0;
     this.data = null;
+    this.id = Texture2D.ID++;
   }
 
   bind(): void {
@@ -113,4 +154,6 @@ export class Texture2D {
         return 0;
     }
   }
+
+  private static ID: number = 0;
 }

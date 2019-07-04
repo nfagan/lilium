@@ -92,6 +92,14 @@ export function arrayScale(out: BuiltinRealArray, a: BuiltinRealArray, by: numbe
   }
 }
 
+export function dtSecRatio(dt: number): number {
+  return dt / (1/60);
+}
+
+export function dtSecSampleIncrement(dt: number): number {
+  return Math.max(Math.ceil((dt / (1/60))), 1);
+}
+
 export function dtSecScale(dt: number, value: number): number {
   return (dt / (1/60)) * value;
 }

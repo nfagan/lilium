@@ -36,6 +36,15 @@ export class NumberSampler {
     this.sampleIndex = Math.floor((this.numSamples-1) * to);
   }
 
+  nthNextSample(n: number): number {
+    const sample = this.buffer[this.sampleIndex];
+    this.sampleIndex += Math.floor(n);
+    if (this.sampleIndex >= this.numSamples) {
+      this.sampleIndex = 0;
+    }
+    return sample;
+  }
+
   nextSample(): number {
     const sample = this.buffer[this.sampleIndex];
     this.incrementSampleIndex();

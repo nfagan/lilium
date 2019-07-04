@@ -1,4 +1,4 @@
-import { debug, Program, Vao, math, makeAttribute, ICamera, types, Texture2D } from '../src/gl';
+import { debug, Program, Vao, math, ICamera, types, Texture2D } from '../src/gl';
 import { Result, NumberSampler, asyncTimeout, loadAudioBuffer, loadImage } from '../src/util';
 import { mat4 } from 'gl-matrix';
 import * as particleSources from './shaders/debug-particles';
@@ -97,6 +97,7 @@ function makeParticles(gl: WebGLRenderingContext, prog: Program, positions: Floa
   const alphaData = new Float32Array(alphas);
   const rotationData = new Float32Array(rotations);
   const alphaDeltaData = new Float32Array(alphaDeltas);
+  const makeAttribute = types.makeAttribute;
 
   const vboDescriptors = [
     {name: 'position', attributes: [makeAttribute('a_position', gl.FLOAT, 3, 0)], data: positions},

@@ -1,14 +1,24 @@
 import { types, Material } from '..';
 
+namespace errors {
+  export function inconsistentTypesForSameIdentifier(ident: string, srcType: types.GLSLTypes, destType: types.GLSLTypes): string {
+    return `Usage of identifier "${ident}" is inconsistent; source type is "${srcType}", while destination type is "${destType}".`;
+  }
+}
+
 export function applyMaterial(toPlug: types.ShaderComponentPlugs, forMaterial: Material): void {
   forMaterial.useActiveUniforms((uniform, kind) => {
     if (kind in toPlug) {
-      toPlug[kind].source.type = uniform.type;
+      toPlug[kind].getSource().type = uniform.type;
     }
   });
 }
 
-export function connect(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
+export function connectOutputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
+
+}
+
+export function connectInputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
   const toJoin: Array<string> = [];
 
   for (let connectionName in toOutlet) {
@@ -18,24 +28,30 @@ export function connect(forSchema: types.ShaderSchema, plug: types.ShaderCompone
     forSchema.requireTemporary(outlet);
 
     if (plug.hasOwnProperty(connectionName) && connection !== undefined) {
-      const source = connection.source;
+      const source = connection.getSource();
       const sourceId = source.identifier;
-      const samplerSource = connection.samplerSource;
+      const samplerSource = connection.getSamplerSource();
       const outletId = outlet.identifier;
       const outletType = outlet.type;
 
       if (source.type === 'sampler2D' && samplerSource === undefined) {
         console.warn('Sampler source requires an additional samplerSource input.');
 
+      } else if (outletId === sourceId) {
+        //  Ignore self- assignment
+        if (outletType !== source.type) {
+          //  Assignment between unlike types, but same identifier.
+          console.error(errors.inconsistentTypesForSameIdentifier(outletId, source.type, outletType));
+        }
       } else {
-        const samplerSourceId = samplerSource === undefined ? '' : samplerSource.source.identifier;
+        const samplerSourceId = samplerSource === undefined ? '' : samplerSource.getSource().identifier;
         const assignResult = assign(outletId, outletType, sourceId, source.type, samplerSourceId);
 
         if (assignResult.success) {
           toJoin.push(assignResult.value);
 
-          if (connection.sourceType !== types.ShaderDataSource.Temporary) {
-            forSchema.requireBySourceType(source, connection.sourceType);
+          if (connection.getSourceType() !== types.ShaderDataSource.Temporary) {
+            forSchema.requireBySourceType(source, connection.getSourceType());
           }
         }
       }
@@ -50,9 +66,10 @@ export function requireStatics(toSchema: types.ShaderSchema, statics: types.Shad
 
   for (let staticName in statics) {
     const staticValue = statics[staticName];
-    const source = staticValue.source;
+    const source = staticValue.getSource();
+    const sourceType = staticValue.getSourceType();
 
-    switch (staticValue.sourceType) {
+    switch (sourceType) {
       case types.ShaderDataSource.Temporary:
         toJoin.push(declarationToString(source));
         break;
@@ -60,7 +77,7 @@ export function requireStatics(toSchema: types.ShaderSchema, statics: types.Shad
         toSchema.requireUniform(source);
         break;
       default:
-        console.error(`Invalid source type "${staticValue.sourceType}" for static: "${source.identifier}".`);
+        console.error(`Invalid source type "${sourceType}" for static: "${source.identifier}".`);
     }
   }
 
@@ -109,6 +126,11 @@ export function addRequirements(toSchema: types.ShaderSchema, requirements: type
     toSchema.requireOutput(requirements.outputs[i]);
   }
   addRequiredUniforms(toSchema,  requirements.uniforms, forMaterial);
+
+  for (let i = 0; i < requirements.conditionallyRequireForMaterial.length; i++) {
+    requirements.conditionallyRequireForMaterial[i](toSchema, forMaterial);
+  }
+
   requireTemporaries(toSchema, requirements.temporaries);
   addUniformsToTemporaries(toSchema, requirements, forMaterial);
 }
