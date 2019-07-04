@@ -1,4 +1,4 @@
-import { types, VoxelGrid, collision, math, geometry, Vao, Vbo, RenderContext, Program, Material, shaderBuilder, Scene } from '../gl';
+import { types, VoxelGrid, collision, math, geometry, Vao, Vbo, RenderContext, Program, Material, shaderBuilder, Scene, Texture2D } from '../gl';
 import * as gridSources from './shaders/voxel-grid';
 import { mat4 } from 'gl-matrix';
 
@@ -25,6 +25,61 @@ export class WorldGridComponent {
       }
     }    
   }
+
+  encloseSquare(dim: number, offX: number, offZ: number, height: number): void {
+    const indices = [0, 0, 0];
+    const grid = this.worldGrid.voxelGrid;
+
+    grid.getCellIndexOf3(indices, offX, 0, offZ);
+
+    const minX = indices[0] - 1;
+    const minZ = indices[2] - 1;
+
+    grid.getCellIndexOf3(indices, offX + dim, 0, offZ + dim);
+
+    const maxX = indices[0];
+    const maxZ = indices[2];
+
+    const numX = maxX - minX;
+    const numZ = maxZ - minZ;
+
+    for (let i = 0; i < numX; i++) {
+      for (let j = 0; j < height; j++) {
+        indices[0] = i + minX;
+        indices[1] = 1 + j;
+        indices[2] = minZ;
+        this.worldGrid.unconditionalAddCell(indices);
+        this.gridDrawable.addCell(indices);
+
+        indices[2] = maxZ;
+        this.worldGrid.unconditionalAddCell(indices);
+        this.gridDrawable.addCell(indices);
+      }
+    }
+
+    for (let i = 0; i < numZ; i++) {
+      for (let j = 0; j < height; j++) {
+        indices[0] = minX;
+        indices[1] = 1 + j;
+        indices[2] = i + minZ;
+        this.worldGrid.unconditionalAddCell(indices);
+        this.gridDrawable.addCell(indices);
+
+        indices[0] = maxX;
+        this.worldGrid.unconditionalAddCell(indices);
+        this.gridDrawable.addCell(indices);
+      }
+    }
+
+    for (let i = 0; i < height; i++) {
+      indices[0] = maxX;
+      indices[1] = i + 1;
+      indices[2] = maxZ;
+
+      this.worldGrid.unconditionalAddCell(indices);
+      this.gridDrawable.addCell(indices);
+    }
+  }
 }
 
 export class WorldGridDrawable {
@@ -47,7 +102,7 @@ export class WorldGridDrawable {
     this.grid = grid;
     this.renderContext = renderContext;
     this.maxNumInstances = maxNumInstances;
-    this.material = Material.Physical();
+    this.material = this.makeMaterial();
     this.tmpVec3 = new Float32Array(3);
     this.filledIndices = [];
   }
@@ -57,6 +112,12 @@ export class WorldGridDrawable {
       this.drawable.vao.dispose();
       this.isCreated = false;
     }
+  }
+
+  private makeMaterial(): Material {
+    const mat = Material.Physical();
+    mat.setUniformProperty('ambientConstant', 2);
+    return mat;
   }
 
   private makeProgram(gl: WebGLRenderingContext): Program {
@@ -75,7 +136,6 @@ export class WorldGridDrawable {
     shaderBuilder.fragColor.applyComponent(fragSchema, mat, fragOutput);
 
     const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
-    console.log(fragSource);
     
     const prog = Program.fromSources(gl, gridSources.vertex, fragSource);
     // const prog = Program.fromSources(gl, gridSources.vertex, gridSources)
@@ -151,17 +211,12 @@ export class WorldGridDrawable {
     const mat = this.material;
     const prog = this.program;
 
-    mat.setUniformProperty('ambientConstant', 2);
-    // mat.setUniformProperty('roughness', 2);
-    // mat.setUniformProperty('metallic', 0);
-
     this.renderContext.useProgram(prog);
     mat.setUniforms(prog);
 
     prog.setMat4('view', view);
     prog.setMat4('projection', proj);
     prog.setVec3(types.DefaultShaderIdentifiers.uniforms.cameraPosition, camPos);
-
     prog.set3f('scale', cellDims[0]/2, cellDims[1]/2, cellDims[2]/2);
 
     for (let i = 0; i < scene.lights.length; i++) {

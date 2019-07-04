@@ -6,6 +6,14 @@ namespace errors {
   }
 }
 
+export function requireIdentifiers(identifiers?: types.ShaderIdentifierMap): types.ShaderIdentifierMap {
+  if (identifiers === undefined) {
+    return types.DefaultShaderIdentifiers;
+  } else {
+    return identifiers;
+  }
+}
+
 export function applyMaterial(toPlug: types.ShaderComponentPlugs, forMaterial: Material): void {
   forMaterial.useActiveUniforms((uniform, kind) => {
     if (kind in toPlug) {
@@ -15,7 +23,44 @@ export function applyMaterial(toPlug: types.ShaderComponentPlugs, forMaterial: M
 }
 
 export function connectOutputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
+  const toJoin: Array<string> = [];
 
+  for (let connectionName in toOutlet) {
+    const outlet = toOutlet[connectionName];
+    const connection = plug[connectionName];
+
+    forSchema.requireTemporary(outlet);
+
+    if (plug.hasOwnProperty(connectionName) && connection !== undefined) {
+      const source = connection.getSource();
+      const sourceId = source.identifier;
+      const outletId = outlet.identifier;
+      const outletType = outlet.type;
+
+      if (source.type === 'sampler2D') {
+        console.error('Sampler source is not a valid assignment target.');
+
+      } else if (outletId === sourceId) {
+        //  Ignore self- assignment
+        if (outletType !== source.type) {
+          //  Assignment between unlike types, but same identifier.
+          console.error(errors.inconsistentTypesForSameIdentifier(outletId, outletType, source.type));
+        }
+      } else {
+        const assignResult = assign(sourceId, source.type, outletId, outletType, '');
+
+        if (assignResult.success) {
+          toJoin.push(assignResult.value);
+
+          if (connection.getSourceType() !== types.ShaderDataSource.Temporary) {
+            forSchema.requireBySourceType(source, connection.getSourceType());
+          }
+        }
+      }
+    }
+  }
+
+  forSchema.body.push(() => toJoin.join('\n'));
 }
 
 export function connectInputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {

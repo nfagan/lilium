@@ -1,5 +1,5 @@
 import { types, Material } from '..';
-import { connectInputs } from './common';
+import { connectInputs, requireTemporaries } from './common';
 
 export type FragColorInputPlug = {
   modelColor: types.ShaderComponentPlug

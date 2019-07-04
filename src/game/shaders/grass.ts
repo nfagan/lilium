@@ -228,6 +228,9 @@ void main() {
   }
 
   vec3 use_color = color * point_light_contrib;
+  // float use_alpha = mix(0.7, 1.0, v_height);
+  // const float use_alpha = 0.9;
+  const float use_alpha = 1.0;
 
   // use_color *= grass_color;
 
@@ -235,6 +238,6 @@ void main() {
   // use_color.g = toon_constrain(use_color.g);
   // use_color.b = toon_constrain(use_color.b);
 
-  gl_FragColor = vec4(use_color, 1.0);
+  gl_FragColor = vec4(use_color, use_alpha);
 }
 `;

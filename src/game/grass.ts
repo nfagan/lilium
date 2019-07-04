@@ -74,9 +74,6 @@ export class GrassTextureManager {
     const velocityTexture = makeVelocityTexture(gl, textureSize);
     const windTexture = makeWindTexture(gl, textureSize);
 
-    windTexture.index = 0;
-    velocityTexture.index = 1;
-
     this.velocityTexture = velocityTexture;
     this.windTexture = windTexture;
   }

@@ -1,8 +1,9 @@
 import * as wgl from '../src/gl';
 import { PlayerMovement, Player, WorldGrid, GrassTile, 
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
-  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, WorldGridComponent } from '../src/game';
-import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage, loadImage } from '../src/util';
+  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, 
+  WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions } from '../src/game';
+import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage } from '../src/util';
 import { mat4 } from 'gl-matrix';
 
 type Game = {
@@ -19,6 +20,7 @@ type Game = {
   frameTimer: Stopwatch,
   sunPosition: Array<number>,
   sunColor: Array<number>,
+  airParticleOptions: AirParticleOptions,
   grassTileOptions: GrassTile,
   grassModelOptions: GrassModelOptions,
   grassTextureOptions: GrassTextureOptions,
@@ -46,14 +48,19 @@ const GAME: Game = {
   // sunPosition: [8, 10, 8],
   sunPosition: [50, 20, 50],
   sunColor: [1, 1, 1],
+  airParticleOptions: {
+    numParticles: 1000, 
+    particleGridScale: 10,
+    particleScale: 0.0075
+  },
   grassTileOptions: {
     density: 0.1,
-    dimension: 200,
-    offsetX: 0,
+    dimension: 300,
+    offsetX: 2,
     offsetY: 0,
-    offsetZ: 0
+    offsetZ: 2
   },
-  grassModelOptions: {numSegments: 8},
+  grassModelOptions: {numSegments: 3},
   grassTextureOptions: {textureSize: 256},
   imageQualityManager: new ImageQualityManager(),
   scene: new wgl.Scene()
@@ -73,6 +80,11 @@ function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
 
   const gridComponent = new WorldGridComponent(worldGrid, worldGridDrawable);
   gridComponent.fillGround(floorDim, floorDim);
+
+  const dim = GAME.grassTileOptions.density * GAME.grassTileOptions.dimension;
+  const offX = GAME.grassTileOptions.offsetX;
+  const offZ = GAME.grassTileOptions.offsetZ;
+  gridComponent.encloseSquare(dim, offX, offZ, 2);
 
   return gridComponent;
 }
@@ -101,65 +113,23 @@ function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lig
   return model;
 }
 
-async function makeSkyTexture(gl: WebGLRenderingContext): Promise<wgl.Texture2D> {
-  const img = await asyncTimeout(() => loadImage('/texture/sky4.png'), 10000);
-  const tex = new wgl.Texture2D(gl);
-
-  tex.minFilter = gl.LINEAR;
-  tex.magFilter = gl.LINEAR;
-  tex.wrapS = gl.REPEAT;
-  tex.wrapT = gl.REPEAT;
-  tex.internalFormat = gl.RGBA;
-  tex.srcFormat = gl.RGBA;
-  tex.srcType = gl.UNSIGNED_BYTE;
-  tex.level = 0;
-  tex.border = 0;
-  tex.width = img.width;
-  tex.height = img.height;
-
-  tex.bind();
-  tex.configure();
-  tex.fillImageElement(img);
-
-  return tex;
-}
-
 async function makeSkyDome(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
-  const gl = renderContext.gl;
+  const resources = new SkyDomeResources('/texture/sky5.png', 5e3);
+  await resources.load(err => console.log(err));
 
-  const tex = await makeSkyTexture(gl);
+  const skyDrawable = new SkyDomeDrawable();
+  skyDrawable.create(renderer, renderContext, resources);
 
-  const attrs = [
-    wgl.types.makeFloat3Attribute(gl, 'a_position'),
-    wgl.types.makeFloat2Attribute(gl, 'a_uv'),
-    wgl.types.makeFloat3Attribute(gl, 'a_normal'),
-  ];
+  skyDrawable.model.transform.translate([10, 2, 10]);
+  skyDrawable.model.transform.scale(100);
 
-  const sphereData = wgl.geometry.sphereInterleavedDataAndIndices();
-  const vboDescriptor = wgl.types.makeAnonymousVboDescriptor(attrs, sphereData.vertexData)
-  const eboDescriptor = wgl.types.makeAnonymousEboDescriptor(sphereData.indices);
-
-  const mat = wgl.Material.NoLight();
-  mat.setUniformProperty('modelColor', tex);
-
-  const prog = renderer.requireProgram(mat);
-  const vao = wgl.Vao.fromDescriptors(gl, prog, [vboDescriptor], eboDescriptor);
-
-  const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
-  drawable.mode = gl.TRIANGLE_STRIP;
-  drawable.count = eboDescriptor.indices.length;
-
-  const model = new wgl.Model(drawable, mat);
-  model.transform.translate([10, 2, 10]);
-  model.transform.scale(100);
-
-  return model;
+  return skyDrawable.model;
 }
 
 async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
   const modelUrl = '/model/character2:character3.obj';
   const gl = renderContext.gl;
-  const modelObj = await asyncTimeout(() => loadText(modelUrl), 5 * 1e3);
+  const modelObj = await asyncTimeout(() => loadText(modelUrl), 5e3);
   const parse = new wgl.parse.Obj(modelObj);
 
   const makeFloatAttribute = wgl.types.makeFloat3Attribute;
@@ -179,6 +149,7 @@ async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.Ren
   ];
   const eboDescriptor = makeEboDescriptor(wgl.geometry.cubeIndices());
 
+  // const mat = wgl.Material.Phong();
   const mat = wgl.Material.Physical();
   mat.setUniformProperty('modelColor', [1, 1, 0.2]);
   mat.setUniformProperty('metallic', 3);
@@ -192,7 +163,7 @@ async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.Ren
   drawable.count = eboDescriptor.indices.length;
 
   const model = new wgl.Model(drawable, mat);
-  model.transform.translate([10, 2, 10]);
+  model.transform.translate([10, 1.5, 10]);
   return model;
 }
 
@@ -235,8 +206,7 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const proj = camera.makeProjectionMatrix();
 
   if (handleQuality(game.keyboard, game.imageQualityManager)) {
-    const mat = game.playerDrawable.material;
-    mat.setUniformProperty('modelColor', [0, 0, 1]);
+    //
   }
 
   const imQuality = game.imageQualityManager;
@@ -301,7 +271,7 @@ export async function main() {
   await airParticleResources.load(audioContext, err => { console.log(err); });
 
   const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource);
-  airParticles.create({numParticles: 1000, particleGridScale: 10});
+  airParticles.create(GAME.airParticleOptions);
 
   const grassResources = new GrassResources(5 * 1e3, '/sound/lf_noise_short.m4a');
   await grassResources.load(audioContext, err => { console.log(err); });

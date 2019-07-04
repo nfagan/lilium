@@ -1,66 +1,64 @@
 import { types, Material } from '..';
-import { addRequirements } from './common';
+import * as components from './components';
+import { addRequirements, requireIdentifiers, applyMaterial, connectInputs, connectOutputs } from './common';
 
-function assignFragColorToModelColor(identifiers: types.ShaderIdentifierMap): string {
-  return `gl_FragColor = vec4(${identifiers.temporaries.modelColor.identifier}, 1.0);`;
+export type NoLightComponentInputPlug = {
+  modelColor: types.ShaderComponentPlug,
+};
+
+export type NoLightComponentInputOutlet = {
+  modelColor: types.GLSLVariable
 }
 
-function makeNoLightVertexRequirements(identifiers: types.ShaderIdentifierMap): types.ShaderRequirements {
+export type NoLightComponentOutputPlug = {
+  modelColor: types.ShaderComponentPlug
+}
+
+export type NoLightComponentOutputOutlet = {
+  modelColor: types.GLSLVariable
+}
+
+const DefaultOutletInputs = makeDefaultInputOutlet(types.DefaultShaderIdentifiers);
+const DefaultOutletOutputs = makeDefaultOutputOutlet(types.DefaultShaderIdentifiers);
+
+export function makeDefaultInputOutlet(identifiers: types.ShaderIdentifierMap): NoLightComponentInputOutlet {
   return {
-    inputs: [],
-    outputs: [],
-    temporaries: {},
-    uniforms: {},
-    sampler2DCoordinates: identifiers.attributes.uv,
-    conditionallyRequireForMaterial: []
-  }
+    modelColor: identifiers.temporaries.modelColor,
+  };
 }
 
-function makeNoLightFragmentRequirements(identifiers: types.ShaderIdentifierMap): types.ShaderRequirements {
-  const varyings = identifiers.varyings;
+export function makeDefaultOutputOutlet(identifiers: types.ShaderIdentifierMap): NoLightComponentOutputOutlet {
+  return {
+    modelColor: identifiers.temporaries.modelColor
+  };
+}
+
+export function makeDefaultInputPlug(identifiers?: types.ShaderIdentifierMap): NoLightComponentInputPlug {
+  identifiers = requireIdentifiers(identifiers);
+
   const uniforms = identifiers.uniforms;
-  const temporaries = identifiers.temporaries;
+  const makeVar = types.makeGLSLVariable;
+  const makePlug = types.makeConcreteComponentPlug;
+  const defaultSamplerSource = components.makeDefaultSamplerSource(identifiers);
 
   return {
-    inputs: [],
-    outputs: [],
-    temporaries: {
-      modelColor: temporaries.modelColor
-    },
-    uniforms: {
-      modelColor: types.makeGLSLVariable(uniforms.modelColor, 'vec3'),
-    },
-    sampler2DCoordinates: varyings.uv,
-    conditionallyRequireForMaterial: []
-  }
+    modelColor: makePlug(makeVar(uniforms.modelColor, 'vec3'), types.ShaderDataSource.Uniform, defaultSamplerSource),
+  };
 }
 
-const NoLightFragmentRequirements = makeNoLightFragmentRequirements(types.DefaultShaderIdentifiers);
-const NoLightVertexRequirements = makeNoLightVertexRequirements(types.DefaultShaderIdentifiers);
-
-export function applyNoLightVertexPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {
-  let requirements: types.ShaderRequirements;
-
-  if (identifiers === undefined) {
-    identifiers = types.DefaultShaderIdentifiers;
-    requirements = NoLightVertexRequirements;
-  } else {
-    requirements = makeNoLightVertexRequirements(identifiers);
-  }
-
-  addRequirements(toSchema, requirements, forMaterial);
+export function makeDefaultOutputPlug(identifiers?: types.ShaderIdentifierMap): NoLightComponentOutputPlug {
+  identifiers = requireIdentifiers(identifiers);
+  return {
+    modelColor: types.makeConcreteComponentPlug(identifiers.temporaries.modelColor, types.ShaderDataSource.Temporary)
+  };
 }
 
-export function applyNoLightFragmentPipeline(toSchema: types.ShaderSchema, forMaterial: Material, identifiers?: types.ShaderIdentifierMap): void {
-  let requirements: types.ShaderRequirements;
 
-  if (identifiers === undefined) {
-    identifiers = types.DefaultShaderIdentifiers;
-    requirements = NoLightFragmentRequirements;
-  } else {
-    requirements = makeNoLightFragmentRequirements(identifiers);
-  }
+export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Material, plugInputs: NoLightComponentInputPlug, plugOutputs: NoLightComponentOutputPlug): void {
+  const inputs = DefaultOutletInputs;
+  const outputs = DefaultOutletOutputs;
 
-  addRequirements(toSchema, requirements, forMaterial);
-  toSchema.body.push(() => assignFragColorToModelColor(identifiers));
+  applyMaterial(plugInputs, forMaterial);
+  connectInputs(toSchema, plugInputs, inputs);
+  connectOutputs(toSchema, plugOutputs, outputs);
 }

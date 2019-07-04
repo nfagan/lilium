@@ -40,7 +40,7 @@ export class Renderer {
 
       renderContext.useProgram(progForMaterial);
 
-      if (material.descriptor.lightingModel !== 'none') {
+      if (material.descriptor.lightingModel !== types.LightingModel.None) {
         for (let j = 0; j < lights.length; j++) {
           lights[j].setUniforms(progForMaterial);
         }
@@ -65,7 +65,7 @@ export class Renderer {
   requireProgram(forMaterial: Material): Program {
     let progForMaterial = this.programsByMaterialId.get(forMaterial.id);
 
-    if (progForMaterial === undefined) {
+    if (progForMaterial === undefined || forMaterial.isNewSchema()) {
       progForMaterial = this.programBuilder.requireProgram(forMaterial);
       this.programsByMaterialId.set(forMaterial.id, progForMaterial);
     }

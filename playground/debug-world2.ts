@@ -401,7 +401,7 @@ async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
   });
 
   const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource);
-  airParticles.create({numParticles: 1000, particleGridScale: 10});
+  airParticles.create({numParticles: 1000, particleGridScale: 10, particleScale: 0.005});
   GAME_STATE.airParticleComponent = airParticles;
 
   const gridDim = 50;

@@ -1,5 +1,6 @@
 import { types, Material } from '..';
-import { requireTemporaries, requireStatics, connectInputs, applyMaterial, connectOutputs } from './common';
+import * as components from './components';
+import { requireTemporaries, requireStatics, connectInputs, applyMaterial, connectOutputs, requireIdentifiers } from './common';
 import { pbrDeclaration } from './library';
 
 export type PhysicalComponentStatics = {
@@ -52,19 +53,7 @@ export function makeDefaultTemporaries(identifiers: types.ShaderIdentifierMap): 
 }
 
 export function makeDefaultStatics(identifiers: types.ShaderIdentifierMap): PhysicalComponentStatics {
-  const maxNumDirLights = types.ShaderLimits.maxNumUniformDirectionalLights;
-  const maxNumPointLights = types.ShaderLimits.maxNumUniformPointLights;
-  const makePlug = types.makeConcreteComponentPlug;
-  const makeVar = types.makeGLSLVariable;
-  const uniforms = identifiers.uniforms;
-
-  return {
-    directionalLightPositions: makePlug(makeVar(uniforms.directionalLightPositions, 'vec3', true, maxNumDirLights), types.ShaderDataSource.Uniform),
-    directionalLightColors: makePlug(makeVar(uniforms.directionalLightColors, 'vec3', true, maxNumDirLights), types.ShaderDataSource.Uniform),
-    pointLightPositions: makePlug(makeVar(uniforms.pointLightPositions, 'vec3', true, maxNumPointLights), types.ShaderDataSource.Uniform),
-    pointLightColors: makePlug(makeVar(uniforms.pointLightColors, 'vec3', true, maxNumPointLights), types.ShaderDataSource.Uniform),
-    cameraPosition: makePlug(makeVar(uniforms.cameraPosition, 'vec3'), types.ShaderDataSource.Uniform)
-  };
+  return components.makeDefaultCommonLightStatics(identifiers);
 }
 
 export function makeDefaultInputOutlet(identifiers: types.ShaderIdentifierMap): PhysicalComponentInputOutlet {
@@ -85,34 +74,28 @@ export function makeDefaultOutputOutlet(identifiers: types.ShaderIdentifierMap):
 }
 
 export function makeDefaultInputPlug(identifiers?: types.ShaderIdentifierMap): PhysicalComponentInputPlug {
-  if (identifiers === undefined) {
-    identifiers = types.DefaultShaderIdentifiers;
-  }
+  identifiers = requireIdentifiers(identifiers);
 
   const uniforms = identifiers.uniforms;
   const varyings = identifiers.varyings;
   const makeVar = types.makeGLSLVariable;
   const makePlug = types.makeConcreteComponentPlug;
+  const defaultSamplerSource = components.makeDefaultSamplerSource(identifiers);
 
   return {
-    roughness: makePlug(makeVar(uniforms.roughness, 'float'), types.ShaderDataSource.Uniform),
-    metallic: makePlug(makeVar(uniforms.metallic, 'float'), types.ShaderDataSource.Uniform),
-    ambientConstant: makePlug(makeVar(uniforms.ambientConstant, 'float'), types.ShaderDataSource.Uniform),
-    modelColor: makePlug(makeVar(uniforms.modelColor, 'vec3'), types.ShaderDataSource.Uniform),
+    roughness: makePlug(makeVar(uniforms.roughness, 'float'), types.ShaderDataSource.Uniform, defaultSamplerSource),
+    metallic: makePlug(makeVar(uniforms.metallic, 'float'), types.ShaderDataSource.Uniform, defaultSamplerSource),
+    ambientConstant: makePlug(makeVar(uniforms.ambientConstant, 'float'), types.ShaderDataSource.Uniform, defaultSamplerSource),
+    modelColor: makePlug(makeVar(uniforms.modelColor, 'vec3'), types.ShaderDataSource.Uniform, defaultSamplerSource),
     normal: makePlug(makeVar(varyings.normal, 'vec3'), types.ShaderDataSource.Varying),
     position: makePlug(makeVar(varyings.position, 'vec3'), types.ShaderDataSource.Varying),
   };
 }
 
 export function makeDefaultOutputPlug(identifiers?: types.ShaderIdentifierMap): PhysicalComponentOutputPlug {
-  if (identifiers === undefined) {
-    identifiers = types.DefaultShaderIdentifiers;
-  }
-
-  const makePlug = types.makeConcreteComponentPlug;
-
+  identifiers = requireIdentifiers(identifiers);
   return {
-    modelColor: makePlug(identifiers.temporaries.modelColor, types.ShaderDataSource.Temporary)
+    modelColor: types.makeConcreteComponentPlug(identifiers.temporaries.modelColor, types.ShaderDataSource.Temporary)
   };
 }
 

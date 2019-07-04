@@ -260,7 +260,12 @@ export function makeDefaultShaderIdentifiers(): ShaderIdentifierMap {
 
 export const DefaultShaderIdentifiers = makeDefaultShaderIdentifiers();
 
-export type LightingModel = 'phong' | 'physical' | 'none';
+export const enum LightingModel {
+  Phong,
+  Physical,
+  None
+};
+
 export const enum Lights {
   Directional,
   Point

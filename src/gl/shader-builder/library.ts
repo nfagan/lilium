@@ -1,3 +1,40 @@
+export function phongDirectionalLightingDeclaration(): string {
+  return `
+vec3 phong_directional_lighting(vec3 normal, vec3 light_position, 
+  vec3 light_color, vec3 normal_to_camera, float ka, float kd, float ks, float spec_power) {
+
+  vec3 to_light = normalize(light_position);
+  vec3 reflect_dir = normalize(normal_to_camera + to_light);
+
+  float diffuse = kd * max(dot(normal, to_light), 0.0);
+  float spec = ks * pow(max(dot(normal, reflect_dir), 0.0), spec_power);
+
+  float total_light = ka + diffuse + spec;
+
+  return light_color * total_light;
+}
+`;
+}
+
+export function phongPointLightingDeclaration(): string {
+  return `
+vec3 phong_point_lighting(vec3 position, vec3 normal, vec3 light_position, vec3 light_color, 
+  vec3 normal_to_camera, float ka, float kd, float ks, float spec_power) {
+
+  vec3 to_light = normalize(light_position - position);
+  vec3 reflect_dir = normalize(normal_to_camera + to_light);
+
+  float diffuse = kd * max(dot(normal, to_light), 0.0);
+  float spec = ks * pow(max(dot(normal, reflect_dir), 0.0), spec_power);
+
+  float total_light = ka + diffuse + spec;
+
+  return light_color * total_light;
+}
+`;
+}
+
+
 export function pbrDeclaration(): string {
   return `
     const float PI = ${Math.PI};

@@ -11,3 +11,4 @@ export * from './world-grid';
 export * from './controls';
 export * from './quality';
 export * from './fatal-error';
+export * from './sky-dome';

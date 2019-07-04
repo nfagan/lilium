@@ -170,7 +170,7 @@ export class Material {
     return new Material({
       receivesShadow: false,
       castsShadow: false,
-      lightingModel: 'none',
+      lightingModel: types.LightingModel.None,
       uniforms: {}
     });
   }
@@ -181,7 +181,7 @@ export class Material {
     return new Material({
       receivesShadow: true,
       castsShadow: true,
-      lightingModel: 'phong',
+      lightingModel: types.LightingModel.Phong,
       uniforms: {
         ambientConstant: types.makeUniformFloatValue(identifiers.uniforms.ambientConstant, 0.25),
         diffuseConstant: types.makeUniformFloatValue(identifiers.uniforms.diffuseConstant, 0.25),
@@ -198,7 +198,7 @@ export class Material {
     return new Material({
       receivesShadow: true,
       castsShadow: true,
-      lightingModel: 'none',
+      lightingModel: types.LightingModel.None,
       uniforms: {
         modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])
       }
@@ -211,13 +211,13 @@ export class Material {
     return new Material({
       receivesShadow: true,
       castsShadow: true,
-      lightingModel: 'physical',
+      lightingModel: types.LightingModel.Physical,
       uniforms: {
         ambientConstant: types.makeUniformFloatValue(identifiers.uniforms.ambientConstant, 0.2),
         roughness: types.makeUniformFloatValue(identifiers.uniforms.roughness, 0.5),
         metallic: types.makeUniformFloatValue(identifiers.uniforms.metallic, 0.5),
         modelColor: types.makeUniformFloat3Value(identifiers.uniforms.modelColor, [1, 1, 1])
       }
-    })
+    });
   }
 }

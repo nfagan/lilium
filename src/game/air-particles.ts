@@ -27,8 +27,9 @@ export class AirParticleResources {
 }
 
 export type AirParticleOptions = {
-  numParticles: number;
-  particleGridScale: number;
+  numParticles: number,
+  particleGridScale: number,
+  particleScale: number
 }
 
 class AirParticleData {
@@ -210,6 +211,7 @@ export class AirParticles {
     }
 
     this.options = Object.assign({}, options);
+    this.particleScale = options.particleScale;
 
     const xzScale = options.particleGridScale;
     const numParticles = options.numParticles;
