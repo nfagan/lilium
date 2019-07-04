@@ -24,6 +24,50 @@ export namespace typeTest {
   }
 }
 
+export const enum BuiltinAttribute {
+  Position,
+  Normal,
+  Uv
+};
+
+export function builtinAttributeToIdentifier(attr: BuiltinAttribute, identifiers?: ShaderIdentifierMap): string {
+  if (identifiers === undefined) {
+    identifiers = DefaultShaderIdentifiers;
+  }
+
+  switch (attr) {
+    case BuiltinAttribute.Position:
+      return identifiers.attributes.position;
+    case BuiltinAttribute.Normal:
+      return identifiers.attributes.normal;
+    case BuiltinAttribute.Uv:
+      return identifiers.attributes.uv;
+    default:
+      console.warn(`Unhandled attribute: ${attr}.`);
+      return '';
+  }
+}
+
+export function numComponentsInBuiltinAttribute(attr: BuiltinAttribute): number {
+  switch (attr) {
+    case BuiltinAttribute.Position:
+      return 3;
+    case BuiltinAttribute.Normal:
+      return 3;
+    case BuiltinAttribute.Uv:
+      return 2;
+    default:
+      console.warn(`Unhandled attribute: ${attr}.`);
+      return 0;
+  }
+}
+
+export function builtinAttributeToDescriptor(gl: WebGLRenderingContext, attr: BuiltinAttribute, identifiers?: ShaderIdentifierMap): AttributeDescriptor {
+  const ident = builtinAttributeToIdentifier(attr);
+  const size = numComponentsInBuiltinAttribute(attr);
+  return makeAttribute(ident, gl.FLOAT, size, 0);
+}
+
 export const ShaderLimits = {
   maxNumUniformDirectionalLights: 3,
   maxNumUniformPointLights: 3
@@ -796,6 +840,14 @@ export class Drawable extends DrawableBase<Drawable> {
     if (numActiveInstances !== undefined) {
       this.numActiveInstances = numActiveInstances;
     }
+  }
+
+  static indexed(renderContext: RenderContext, vao: Vao, numIndices: number): Drawable {
+    const drawFunc = DrawFunctions.indexed;
+    const drawable = Drawable.fromProperties(renderContext, vao, drawFunc);
+    drawable.count = numIndices;
+
+    return drawable;
   }
 
   static fromProperties(renderContext: RenderContext, vao: Vao, drawFunction: DrawFunction, mode?: number, count?: number, type?: number, offset?: number, isInstanced?: boolean, numActiveInstances?: number): Drawable {

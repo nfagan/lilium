@@ -106,6 +106,28 @@ export class Vao {
     }
   }
 
+  static fromScalarDescriptors(gl: WebGLRenderingContext, prog: Program, vboDescriptor: types.VboDescriptor, eboDescriptor?: types.EboDescriptor): Vao {
+    return Vao.fromDescriptors(gl, prog, [vboDescriptor], eboDescriptor);
+  }
+
+  static fromSimpleInterleavedFloatData(gl: WebGLRenderingContext, prog: Program, data: Float32Array, attrs: Array<types.BuiltinAttribute>, 
+    indices?: Uint16Array, identifiers?: types.ShaderIdentifierMap): Vao {
+    const attributeDescriptors: Array<types.AttributeDescriptor> = [];
+
+    for (let i = 0; i < attrs.length; i++) {
+      attributeDescriptors.push(types.builtinAttributeToDescriptor(gl, attrs[i], identifiers));
+    }
+
+    const vboDescriptor = types.makeAnonymousVboDescriptor(attributeDescriptors, data, gl.STATIC_DRAW);
+    let eboDescriptor: types.EboDescriptor = undefined;
+
+    if (indices) {
+      eboDescriptor = types.makeAnonymousEboDescriptor(indices);
+    }
+
+    return Vao.fromScalarDescriptors(gl, prog, vboDescriptor, eboDescriptor);
+  }
+
   static fromDescriptors(gl: WebGLRenderingContext, prog: Program, vboDescriptors: Array<types.VboDescriptor>, eboDescriptor?: types.EboDescriptor): Vao {
     prog.use();
 

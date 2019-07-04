@@ -90,23 +90,13 @@ function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
 }
 
 function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lightPos: wgl.types.Real3, lightColor: wgl.types.Real3): wgl.Model {
-  const makeFloatAttribute = wgl.types.makeFloat3Attribute;
-  const makeVboDescriptor = wgl.types.makeAnonymousVboDescriptor;
-  const makeEboDescriptor = wgl.types.makeAnonymousEboDescriptor;
   const gl = renderContext.gl;
-
-  const cubePositions = wgl.geometry.cubeInterleavedPositionsNormals();
-  const vboDescriptor = makeVboDescriptor([makeFloatAttribute(gl, 'a_position'), makeFloatAttribute(gl, 'a_normal')], cubePositions);
-  const eboDescriptor = makeEboDescriptor(wgl.geometry.cubeIndices());
 
   const mat = wgl.Material.NoLight();
   mat.setUniformProperty('modelColor', lightColor);
-
   const prog = renderer.requireProgram(mat);
-  const vao = wgl.Vao.fromDescriptors(gl, prog, [vboDescriptor], eboDescriptor);
 
-  const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
-  drawable.count = eboDescriptor.indices.length;
+  const drawable = wgl.factory.drawable.makeCubeDrawable(renderContext, prog);
 
   const model = new wgl.Model(drawable, mat);
   model.transform.translate(lightPos);
@@ -128,26 +118,8 @@ async function makeSkyDome(renderer: wgl.Renderer, renderContext: wgl.RenderCont
 
 async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
   const modelUrl = '/model/character2:character3.obj';
-  const gl = renderContext.gl;
   const modelObj = await asyncTimeout(() => loadText(modelUrl), 5e3);
   const parse = new wgl.parse.Obj(modelObj);
-
-  const makeFloatAttribute = wgl.types.makeFloat3Attribute;
-  const makeVboDescriptor = wgl.types.makeAnonymousVboDescriptor;
-  const makeEboDescriptor = wgl.types.makeAnonymousEboDescriptor;
-
-  // const vboDescriptors = [
-  //   makeVboDescriptor([makeFloatAttribute(gl, 'a_position')], new Float32Array(parse.positions)),
-  //   makeVboDescriptor([makeFloatAttribute(gl, 'a_normal')], new Float32Array(parse.normals)),
-  // ];
-
-  // const eboDescriptor = makeEboDescriptor(new Uint16Array(parse.positionIndices));
-
-  const cubePositions = wgl.geometry.cubeInterleavedPositionsNormals();
-  const vboDescriptors = [
-    makeVboDescriptor([makeFloatAttribute(gl, 'a_position'), makeFloatAttribute(gl, 'a_normal')], cubePositions)
-  ];
-  const eboDescriptor = makeEboDescriptor(wgl.geometry.cubeIndices());
 
   // const mat = wgl.Material.Phong();
   const mat = wgl.Material.Physical();
@@ -156,11 +128,7 @@ async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.Ren
   mat.setUniformProperty('roughness', 1);
 
   const prog = renderer.requireProgram(mat);
-  const vao = wgl.Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
-
-  const drawable = wgl.types.Drawable.fromProperties(renderContext, vao, wgl.types.DrawFunctions.indexed);
-  // drawable.count = parse.positionIndices.length;
-  drawable.count = eboDescriptor.indices.length;
+  const drawable = wgl.factory.drawable.makeCubeDrawable(renderContext, prog);
 
   const model = new wgl.Model(drawable, mat);
   model.transform.translate([10, 1.5, 10]);

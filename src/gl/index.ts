@@ -6,6 +6,7 @@ import * as debug from './debug';
 import * as parse from './parsers';
 import * as geometry from './geometry';
 import * as shaderBuilder from './shader-builder';
+import * as factory from './factory';
 import { MousePicker } from './mouse-picker';
 import { Keyboard, Keys } from './keyboard';
 
@@ -26,6 +27,7 @@ export * from './scene';
 export { 
   collision,
   debug,
+  factory,
   geometry,
   intersect,
   Keyboard,

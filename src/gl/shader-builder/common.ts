@@ -4,6 +4,10 @@ namespace errors {
   export function inconsistentTypesForSameIdentifier(ident: string, srcType: types.GLSLTypes, destType: types.GLSLTypes): string {
     return `Usage of identifier "${ident}" is inconsistent; source type is "${srcType}", while destination type is "${destType}".`;
   }
+
+  export function incompatibleTypesForAssignment(destIdent: string, destType: types.GLSLTypes, srcIdent: string, srcType: types.GLSLTypes): string {
+    return `Unsupported source type: ${srcType} for destination type: ${destType}; for source: "${srcIdent}" and destination: "${destIdent}".`
+  }
 }
 
 export function requireIdentifiers(identifiers?: types.ShaderIdentifierMap): types.ShaderIdentifierMap {
@@ -55,6 +59,8 @@ export function connectOutputs(forSchema: types.ShaderSchema, plug: types.Shader
           if (connection.getSourceType() !== types.ShaderDataSource.Temporary) {
             forSchema.requireBySourceType(source, connection.getSourceType());
           }
+        } else {
+          console.warn(assignResult.value);
         }
       }
     }
@@ -98,6 +104,8 @@ export function connectInputs(forSchema: types.ShaderSchema, plug: types.ShaderC
           if (connection.getSourceType() !== types.ShaderDataSource.Temporary) {
             forSchema.requireBySourceType(source, connection.getSourceType());
           }
+        } else {
+          console.warn(assignResult.value);
         }
       }
     }
@@ -249,24 +257,41 @@ function sampler2DToTemporary(srcIdentifier: string, destIdentifier: string, des
   return assignmentComponentsToString(destIdentifier, initializer);
 }
 
-function makeAssignResult(success: boolean, value: string): {success: boolean, value: string} {
-  return {success, value};
+type AssignmentResult = {
+  success: boolean,
+  value: string
+};
+
+function makeSuccessAssignResult(value: string): AssignmentResult {
+  return {success: true, value};
 }
 
-function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier: string, 
-  srcType: types.GLSLTypes, uvIdentifier: string): {success: boolean, value: string} {
+function makeErrorAssignResult(msg: string): AssignmentResult {
+  return {success: false, value: msg};
+}
+
+function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier: string, srcType: types.GLSLTypes, uvIdentifier: string): AssignmentResult {
+  if (destType === 'sampler2D') {
+    return makeErrorAssignResult(`sampler2D "${destIdentifier}" is not a valid assignment target.`);
+  }
+
   if (srcType === destType) {
-    return makeAssignResult(true, assignmentComponentsToString(destIdentifier, srcIdentifier));
+    return makeSuccessAssignResult(assignmentComponentsToString(destIdentifier, srcIdentifier));
   }
 
   switch (srcType) {
     case 'float':
-      return makeAssignResult(true, expandFloatToComponents(srcIdentifier, destIdentifier, destType));
-    case 'sampler2D':
-      return makeAssignResult(true, sampler2DToTemporary(srcIdentifier, destIdentifier, destType, uvIdentifier));
+      return makeSuccessAssignResult(expandFloatToComponents(srcIdentifier, destIdentifier, destType));
+    case 'sampler2D': {
+      if (uvIdentifier.length > 0) {
+        return makeSuccessAssignResult(sampler2DToTemporary(srcIdentifier, destIdentifier, destType, uvIdentifier));
+      } else {
+        return makeErrorAssignResult('Identifier of sample coordinates for sampler2D input was empty.');
+      }
+    }
   }
 
-  return makeAssignResult(false, `Unsupported source type: ${srcType} for destination type: ${destType}.`);
+  return makeErrorAssignResult(errors.incompatibleTypesForAssignment(destIdentifier, destType, srcIdentifier, srcType));
 }
 
 function uniformToTemporary(uniform: types.UniformValue, temporaryIdentifier: string, temporaryType: types.GLSLTypes, uvIdentifier: string): string {

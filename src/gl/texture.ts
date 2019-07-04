@@ -80,6 +80,11 @@ export class Texture2D implements TextureBase {
     this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
   }
 
+  bindAndConfigure(): void {
+    this.bind();
+    this.configure();
+  }
+
   activate(): void {
     this.gl.activeTexture(this.gl.TEXTURE0 + this.index);
   }
@@ -153,6 +158,22 @@ export class Texture2D implements TextureBase {
         console.warn('Unrecognized source format.');
         return 0;
     }
+  }
+
+  static linearRepeatRGBA(gl: WebGLRenderingContext): Texture2D {
+    const tex = new Texture2D(gl);
+
+    tex.minFilter = gl.LINEAR;
+    tex.magFilter = gl.LINEAR;
+    tex.wrapS = gl.REPEAT;
+    tex.wrapT = gl.REPEAT;
+    tex.internalFormat = gl.RGBA;
+    tex.srcFormat = gl.RGBA;
+    tex.srcType = gl.UNSIGNED_BYTE;
+    tex.level = 0;
+    tex.border = 0;
+
+    return tex;
   }
 
   private static ID: number = 0;

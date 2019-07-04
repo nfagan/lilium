@@ -111,7 +111,7 @@ export class ProgramBuilder {
     if (maybeProg === undefined) {
       return this.makeProgram(programInfoHash, forMaterial);
     } else {
-      console.log('Using cached program...');
+      console.log('Using cached program ...');
       return maybeProg;
     }
   }

@@ -26,23 +26,12 @@ export class SkyDomeResources {
 }
 
 function makeSkyTexture(gl: WebGLRenderingContext, img: HTMLImageElement): Texture2D {
-  const tex = new Texture2D(gl);
-
-  tex.minFilter = gl.LINEAR;
-  tex.magFilter = gl.LINEAR;
-  tex.wrapS = gl.REPEAT;
-  tex.wrapT = gl.REPEAT;
-  tex.internalFormat = gl.RGBA;
-  tex.srcFormat = gl.RGBA;
-  tex.srcType = gl.UNSIGNED_BYTE;
-  tex.level = 0;
-  tex.border = 0;
+  const tex = Texture2D.linearRepeatRGBA(gl);
 
   tex.width = img.width;
   tex.height = img.height;
 
-  tex.bind();
-  tex.configure();
+  tex.bindAndConfigure();
   tex.fillImageElement(img);
 
   return tex;
@@ -71,36 +60,24 @@ export class SkyDomeDrawable {
       this.dispose();
     }
 
-    const gl = renderContext.gl;
-
-    const attrs = [
-      types.makeFloat3Attribute(gl, types.DefaultShaderIdentifiers.attributes.position),
-      types.makeFloat2Attribute(gl, types.DefaultShaderIdentifiers.attributes.uv),
-      types.makeFloat3Attribute(gl, types.DefaultShaderIdentifiers.attributes.normal),
-    ];
-  
-    const sphereData = geometry.sphereInterleavedDataAndIndices();
-    const vboDescriptor = types.makeAnonymousVboDescriptor(attrs, sphereData.vertexData)
-    const eboDescriptor = types.makeAnonymousEboDescriptor(sphereData.indices);
-  
+    const gl = renderContext.gl;  
+    const sphereData = geometry.sphereInterleavedDataAndIndices();  
     const mat = Material.NoLight();
 
     if (resources.skyImage) {
-      const tex = makeSkyTexture(gl, resources.skyImage);
-      mat.setUniformProperty('modelColor', tex);
+      mat.setUniformProperty('modelColor', makeSkyTexture(gl, resources.skyImage));
     } else {
       mat.setUniformProperty('modelColor', [1, 1, 1]);
     }
   
     const prog = renderer.requireProgram(mat);
-    const vao = Vao.fromDescriptors(gl, prog, [vboDescriptor], eboDescriptor);
-  
     mat.removeUnusedUniforms(prog);
-  
-    const drawable = types.Drawable.fromProperties(renderContext, vao, types.DrawFunctions.indexed);
+
+    const attrs = [types.BuiltinAttribute.Position, types.BuiltinAttribute.Uv, types.BuiltinAttribute.Normal];
+    const vao = Vao.fromSimpleInterleavedFloatData(gl, prog, sphereData.vertexData, attrs, sphereData.indices);
+
+    const drawable = types.Drawable.indexed(renderContext, vao, sphereData.indices.length);
     drawable.mode = gl.TRIANGLE_STRIP;
-    drawable.count = eboDescriptor.indices.length;
-  
     const model = new Model(drawable, mat);
 
     this.model = model;
