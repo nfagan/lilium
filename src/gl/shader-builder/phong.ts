@@ -1,5 +1,5 @@
 import { types, Material } from '..';
-import { addRequirements, requireIdentifiers, applyMaterial, connectInputs, connectOutputs, requireStatics, requireTemporaries } from './common';
+import { requireIdentifiers, applyMaterial, connectInputs, connectOutputs, requireStatics, requireTemporaries, assertConnectSuccess } from './common';
 import * as components from './components';
 import { phongDirectionalLightingDeclaration, phongPointLightingDeclaration } from './library';
 
@@ -181,7 +181,7 @@ export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Materi
   const temporaries = DefaultTemporaries;
 
   applyMaterial(plugInputs, forMaterial);
-  connectInputs(toSchema, plugInputs, inputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
   requireTemporaries(toSchema, temporaries);
   requireStatics(toSchema, statics);
 
@@ -190,5 +190,5 @@ export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Materi
 
   toSchema.body.push(() => phongLightingBody(inputs, outputs, statics, temporaries));
 
-  connectOutputs(toSchema, plugOutputs, outputs);
+  assertConnectSuccess(connectOutputs(toSchema, plugOutputs, outputs));
 }

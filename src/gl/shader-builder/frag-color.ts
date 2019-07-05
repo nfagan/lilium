@@ -1,5 +1,5 @@
 import { types, Material } from '..';
-import { connectInputs } from './common';
+import { connectInputs, assertConnectSuccess } from './common';
 
 export type FragColorInputPlug = {
   modelColor: types.ShaderComponentPlug
@@ -33,7 +33,7 @@ function assignFragColor(inputs: FragColorInputOutlet): string {
 
 export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Material, plugInputs: FragColorInputPlug): void {
   const inputs = DefaultFragColorInputs;
-  connectInputs(toSchema, plugInputs, inputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
 
   toSchema.body.push(() => assignFragColor(inputs));
 }

@@ -1,5 +1,5 @@
 import { types } from '..';
-import { requireIdentifiers, connectInputs, connectOutputs, requireStatics } from './common';
+import { requireIdentifiers, connectInputs, connectOutputs, requireStatics, assertConnectSuccess } from './common';
 
 export type WorldPositionComponentInputPlug = {
   position: types.ShaderComponentPlug,
@@ -82,10 +82,10 @@ export function applyComponent(toSchema: types.ShaderSchema, plugInputs: WorldPo
   const outputs = DefaultOutletOutputs;
   const statics = DefaultStatics;
 
-  connectInputs(toSchema, plugInputs, inputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
   requireStatics(toSchema, statics);
 
   toSchema.body.push(() => worldPositionBody(inputs, outputs, statics));
 
-  connectOutputs(toSchema, plugOutputs, outputs);
+  assertConnectSuccess(connectOutputs(toSchema, plugOutputs, outputs));
 }

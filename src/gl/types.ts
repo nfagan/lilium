@@ -7,6 +7,10 @@ export type StringMap<T> = {
 };
 
 export namespace typeTest {
+  export function isShaderComponentPlug(a: any): a is ShaderComponentPlug {
+    return a instanceof ShaderComponentPlug;
+  }
+
   export function isNumber(a: any): a is number {
     return typeof a === 'number';
   }
@@ -89,6 +93,12 @@ export function makeConcreteComponentPlug(source: GLSLVariable, sourceType: Shad
 export function makeTemporaryComponentPlug(source: GLSLVariable, samplerSource?: ShaderComponentPlug): ShaderComponentPlug {
   const plug = new ShaderComponentPlug();
   plug.setConcreteSource(source, ShaderDataSource.Temporary, samplerSource);
+  return plug;
+}
+
+export function makeAttributeComponentPlug(source: GLSLVariable, samplerSource?: ShaderComponentPlug): ShaderComponentPlug {
+  const plug = new ShaderComponentPlug();
+  plug.setConcreteSource(source, ShaderDataSource.Attribute, samplerSource);
   return plug;
 }
 
@@ -678,18 +688,30 @@ export class ShaderSchema {
     return this.hasIdentifierLinearSearch(name, this.temporaries);
   }
 
-  addUniform(value: GLSLVariable): ShaderSchema {
+  hasStatic(name: string): boolean {
+    return this.hasVarying(name) || this.hasUniform(name) || this.hasAttribute(name);
+  }
+
+  private addUniform(value: GLSLVariable): ShaderSchema {
     this.uniforms.push(value);
     return this;
   }
 
-  addVarying(value: GLSLVariable): ShaderSchema {
+  private addVarying(value: GLSLVariable): ShaderSchema {
     this.varyings.push(value);
     return this;
   }
 
-  addAttribute(value: GLSLVariable): ShaderSchema {
+  private addAttribute(value: GLSLVariable): ShaderSchema {
     this.attributes.push(value);
+    return this;
+  }
+
+  requireTemporaryIfNotStatic(value: GLSLVariable): ShaderSchema {
+    if (!this.hasStatic(value.identifier)) {
+      this.requireTemporary(value);
+    }
+
     return this;
   }
 
@@ -756,6 +778,8 @@ export class ShaderSchema {
       case ShaderDataSource.Uniform:
         this.requireUniform(value);
         break;
+      case ShaderDataSource.Temporary:
+        this.requireTemporary(value);
     }
     return this;
   }

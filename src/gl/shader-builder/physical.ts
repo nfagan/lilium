@@ -1,6 +1,6 @@
 import { types, Material } from '..';
 import * as components from './components';
-import { requireTemporaries, requireStatics, connectInputs, applyMaterial, connectOutputs, requireIdentifiers } from './common';
+import { requireTemporaries, requireStatics, connectInputs, applyMaterial, connectOutputs, requireIdentifiers, assertConnectSuccess } from './common';
 import { pbrDeclaration } from './library';
 
 export type PhysicalComponentStatics = {
@@ -161,12 +161,12 @@ export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Materi
   const temporaries = DefaultPhysicalTemporaries;
 
   applyMaterial(plugInputs, forMaterial);
-  connectInputs(toSchema, plugInputs, inputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
   requireTemporaries(toSchema, temporaries);
   requireStatics(toSchema, statics);
 
   toSchema.head.push(pbrDeclaration);
   toSchema.body.push(() => physicalFragmentLightingBody(inputs, outputs, statics, temporaries));
 
-  connectOutputs(toSchema, plugOutputs, outputs);
+  assertConnectSuccess(connectOutputs(toSchema, plugOutputs, outputs));
 }

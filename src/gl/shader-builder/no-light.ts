@@ -1,6 +1,6 @@
 import { types, Material } from '..';
 import * as components from './components';
-import { requireIdentifiers, applyMaterial, connectInputs, connectOutputs } from './common';
+import { requireIdentifiers, applyMaterial, connectInputs, connectOutputs, assertConnectSuccess } from './common';
 
 export type NoLightComponentInputPlug = {
   modelColor: types.ShaderComponentPlug,
@@ -59,6 +59,6 @@ export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Materi
   const outputs = DefaultOutletOutputs;
 
   applyMaterial(plugInputs, forMaterial);
-  connectInputs(toSchema, plugInputs, inputs);
-  connectOutputs(toSchema, plugOutputs, outputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
+  assertConnectSuccess(connectOutputs(toSchema, plugOutputs, outputs));
 }

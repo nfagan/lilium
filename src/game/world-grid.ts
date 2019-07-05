@@ -127,15 +127,14 @@ export class WorldGridDrawable {
     const plugOutputs = shaderBuilder.physical.makeDefaultOutputPlug();
     const fragOutput = shaderBuilder.fragColor.makeDefaultInputPlug();
 
-    const src = types.makeConcreteComponentPlug(types.makeGLSLVariable('v_color', 'vec3'), types.ShaderDataSource.Varying);
-    plugInputs.modelColor = src;
+    plugInputs.modelColor = types.makeConcreteComponentPlug(types.makeGLSLVariable('v_color', 'vec3'), types.ShaderDataSource.Varying);
     plugOutputs.modelColor.connectTo(fragOutput.modelColor);
 
     const fragSchema = types.ShaderSchema.Fragment();
     shaderBuilder.physical.applyComponent(fragSchema, mat, plugInputs, plugOutputs);
     shaderBuilder.fragColor.applyComponent(fragSchema, mat, fragOutput);
 
-    const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
+    const fragSource = shaderBuilder.common.shaderSchemaToString(fragSchema);
     
     const prog = Program.fromSources(gl, gridSources.vertex, fragSource);
 

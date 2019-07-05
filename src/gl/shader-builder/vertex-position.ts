@@ -1,5 +1,5 @@
 import { types} from '..';
-import { requireIdentifiers, connectInputs } from './common';
+import { requireIdentifiers, connectInputs, assertConnectSuccess } from './common';
 
 export type VertexPositionComponentInputPlug = {
   position: types.ShaderComponentPlug,
@@ -36,6 +36,6 @@ function vertexPositionBody(inputs: VertexPositionComponentInputOutlet): string 
 export function applyComponent(toSchema: types.ShaderSchema, plugInputs: VertexPositionComponentInputPlug): void {
   const inputs = DefaultOutletInputs;
 
-  connectInputs(toSchema, plugInputs, inputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
   toSchema.body.push(() => vertexPositionBody(inputs));
 }

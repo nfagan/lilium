@@ -199,7 +199,6 @@ export class Vbo {
 
     let offset = 0;
     const numComponents = descriptor.numComponents();
-    // const attrs = descriptor.getAttributes().sort((a, b) => a.location - b.location);
     const attrs = descriptor.getAttributes();
 
     for (let i = 0; i < attrs.length; i++) {

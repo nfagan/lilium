@@ -1,17 +1,7 @@
 import * as types from '../types';
-import * as phong from './phong';
-import * as noLight from './no-light';
-import * as geometry from './geometry';
-import * as components from './components';
-import * as vertexPosition from './vertex-position';
-import * as vertexVaryings from './vertex-varyings';
-import * as worldPosition from './world-position';
-import * as projectivePosition from './projective-position';
-import * as physical from './physical';
-import * as fragColor from './frag-color';
+import { phong, noLight, common, vertexPosition, worldPosition, projectivePosition, physical, fragColor } from '.';
 import { Program } from '../program';
 import { Material } from '../material';
-import { shaderSchemaToString } from './common';
 import { Stopwatch } from '../../util';
 
 type ProgramCacheMap = {
@@ -49,57 +39,108 @@ function generateUniformIdentifierTypeIds(uniforms: {[key: string]: types.Unifor
   }
 }
 
-function handleLightingModel(forMaterial: Material, fragSchema: types.ShaderSchema): void {
+function handleLightingModel(forMaterial: Material, fragSchema: types.ShaderSchema, identifiers: types.ShaderIdentifierMap): void {
   const lightingModel = forMaterial.descriptor.lightingModel;
-  const fragOutputPlug = fragColor.makeDefaultInputPlug();
+  const fragInputPlug = fragColor.makeDefaultInputPlug(identifiers);
 
   if (lightingModel === types.LightingModel.Phong) {
-    const inputPlug = phong.makeDefaultInputPlug();
-    const outputPlug = phong.makeDefaultOutputPlug();
-    outputPlug.modelColor.connectTo(fragOutputPlug.modelColor);
+    const inputPlug = phong.makeDefaultInputPlug(identifiers);
+    const outputPlug = phong.makeDefaultOutputPlug(identifiers);
+    outputPlug.modelColor.connectTo(fragInputPlug.modelColor);
     phong.applyComponent(fragSchema, forMaterial, inputPlug, outputPlug);
 
   } else if (lightingModel === types.LightingModel.Physical) {
-    const inputPlug = physical.makeDefaultInputPlug();
-    const outputPlug = physical.makeDefaultOutputPlug();
-    outputPlug.modelColor.connectTo(fragOutputPlug.modelColor);
+    const inputPlug = physical.makeDefaultInputPlug(identifiers);
+    const outputPlug = physical.makeDefaultOutputPlug(identifiers);
+    outputPlug.modelColor.connectTo(fragInputPlug.modelColor);
     physical.applyComponent(fragSchema, forMaterial, inputPlug, outputPlug);
 
   } else if (lightingModel === types.LightingModel.None) {
-    const inputPlug = noLight.makeDefaultInputPlug();
-    const outputPlug = noLight.makeDefaultOutputPlug();
-    outputPlug.modelColor.connectTo(fragOutputPlug.modelColor);
+    const inputPlug = noLight.makeDefaultInputPlug(identifiers);
+    const outputPlug = noLight.makeDefaultOutputPlug(identifiers);
+    outputPlug.modelColor.connectTo(fragInputPlug.modelColor);
     noLight.applyComponent(fragSchema, forMaterial, inputPlug, outputPlug);
 
   } else {
     console.warn(`Unsupported lighting model: "${forMaterial.descriptor.lightingModel}".`);
   }
 
-  fragColor.applyComponent(fragSchema, forMaterial, fragOutputPlug);
+  fragColor.applyComponent(fragSchema, forMaterial, fragInputPlug);
+}
+
+function handleGeometry(forMaterial: Material, vertSchema: types.ShaderSchema, fragSchema: types.ShaderSchema, identifiers: types.ShaderIdentifierMap): void {
+  const needsUv = forMaterial.hasTextureUniform();
+  const needsNormal = forMaterial.descriptor.lightingModel !== types.LightingModel.None;
+  const needsVaryingPosition = forMaterial.descriptor.lightingModel !== types.LightingModel.None;
+
+  const posAttr = types.makeGLSLVariable(identifiers.attributes.position, 'vec3');
+  const normAttr = types.makeGLSLVariable(identifiers.attributes.normal, 'vec3');
+  const uvAttr = types.makeGLSLVariable(identifiers.attributes.uv, 'vec2');
+
+  vertSchema.requireAttribute(posAttr);
+
+  const posVarying = types.makeGLSLVariable(identifiers.varyings.position, 'vec3');
+  const normVarying = types.makeGLSLVariable(identifiers.varyings.normal, 'vec3');
+  const uvVarying = types.makeGLSLVariable(identifiers.varyings.uv, 'vec2');
+
+  if (needsVaryingPosition) {
+    vertSchema.requireVarying(posVarying);
+    fragSchema.requireVarying(posVarying);
+  }
+
+  if (needsNormal) {
+    vertSchema.requireVarying(normVarying);
+    vertSchema.requireAttribute(normAttr);
+    //
+    fragSchema.requireVarying(normVarying);
+  }
+
+  if (needsUv) {
+    vertSchema.requireVarying(uvVarying);
+    vertSchema.requireAttribute(uvAttr);
+    //
+    fragSchema.requireVarying(uvVarying);
+  }
+
+  const worldInput = worldPosition.makeDefaultInputPlug(identifiers);
+  const worldOutput = worldPosition.makeDefaultOutputPlug(identifiers);
+  //
+  const projInput = projectivePosition.makeDefaultInputPlug(identifiers);
+  const projOutput = projectivePosition.makeDefaultOutputPlug(identifiers);
+  //
+  const vertInput = vertexPosition.makeDefaultInputPlug(identifiers);
+
+  worldInput.position = types.makeAttributeComponentPlug(posAttr);
+  worldOutput.position.connectTo(projInput.position);
+  projOutput.position.connectTo(vertInput.position);
+
+  worldPosition.applyComponent(vertSchema, worldInput, worldOutput);
+  projectivePosition.applyComponent(vertSchema, projInput, projOutput);
+  vertexPosition.applyComponent(vertSchema, vertInput);
+
+  if (needsVaryingPosition) {
+    common.assignToVariableOrLogError(vertSchema, posVarying, worldOutput.position);
+  }
+
+  if (needsNormal) {
+    common.assignToVariableOrLogError(vertSchema, normVarying, normAttr);
+  }
+
+  if (needsUv) {
+    common.assignToVariableOrLogError(vertSchema, uvVarying, uvAttr);
+  }
 }
 
 function makeProgram(gl: WebGLRenderingContext, forMaterial: Material): Program {
   const vertSchema = types.ShaderSchema.Vertex();
   const fragSchema = types.ShaderSchema.Fragment();
+  const identifiers = types.DefaultShaderIdentifiers;
 
-  worldPosition.applyComponent(vertSchema, worldPosition.makeDefaultInputPlug(), worldPosition.makeDefaultOutputPlug());
-  projectivePosition.applyComponent(vertSchema, projectivePosition.makeDefaultInputPlug(), projectivePosition.makeDefaultOutputPlug());
-  vertexPosition.applyComponent(vertSchema, vertexPosition.makeDefaultInputPlug());
+  handleGeometry(forMaterial, vertSchema, fragSchema, identifiers);
+  handleLightingModel(forMaterial, fragSchema, identifiers);
 
-  // const vertVaryingPlug = vertexVaryings.makeDefaultInputPlug();
-  // if (!forMaterial.hasTextureUniform()) {
-  //   vertVaryingPlug.uv = undefined;
-  // }
-
-  // vertexVaryings.applyComponent(vertSchema, vertVaryingPlug);
-
-  geometry.applyBaseGeometryVertexPipeline(vertSchema, forMaterial);
-  geometry.applyBaseGeometryFragmentPipeline(fragSchema, forMaterial);
-
-  handleLightingModel(forMaterial, fragSchema);
-
-  // console.log(shaderSchemaToString(vertSchema));
-  // console.log(shaderSchemaToString(fragSchema));
+  // console.log(common.shaderSchemaToString(vertSchema));
+  // console.log(common.shaderSchemaToString(fragSchema));
 
   return Program.fromSchemas(gl, vertSchema, fragSchema);
 }

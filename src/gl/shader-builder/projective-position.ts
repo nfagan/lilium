@@ -1,5 +1,5 @@
 import { types } from '..';
-import { requireStatics, requireIdentifiers, connectInputs, connectOutputs } from './common';
+import { requireStatics, requireIdentifiers, connectInputs, connectOutputs, assertConnectSuccess } from './common';
 
 export type ProjectivePositionComponentInputPlug = {
   position: types.ShaderComponentPlug,
@@ -85,10 +85,10 @@ export function applyComponent(toSchema: types.ShaderSchema, plugInputs: Project
   const outputs = DefaultOutletOutputs;
   const statics = DefaultStatics;
 
-  connectInputs(toSchema, plugInputs, inputs);
+  assertConnectSuccess(connectInputs(toSchema, plugInputs, inputs));
   requireStatics(toSchema, statics);
 
   toSchema.body.push(() => projectivePositionBody(inputs, outputs, statics));
 
-  connectOutputs(toSchema, plugOutputs, outputs);
+  assertConnectSuccess(connectOutputs(toSchema, plugOutputs, outputs));
 }

@@ -26,57 +26,33 @@ export function applyMaterial(toPlug: types.ShaderComponentPlugs, forMaterial: M
   });
 }
 
-export function connectOutputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
-  const toJoin: Array<string> = [];
-
-  for (let connectionName in toOutlet) {
-    const outlet = toOutlet[connectionName];
-    const connection = plug[connectionName];
-
-    forSchema.requireTemporary(outlet);
-
-    if (plug.hasOwnProperty(connectionName) && connection !== undefined) {
-      const source = connection.getSource();
-      const sourceId = source.identifier;
-      const outletId = outlet.identifier;
-      const outletType = outlet.type;
-
-      if (source.type === 'sampler2D') {
-        console.error('Sampler source is not a valid assignment target.');
-
-      } else if (outletId === sourceId) {
-        //  Ignore self- assignment
-        if (outletType !== source.type) {
-          //  Assignment between unlike types, but same identifier.
-          console.error(errors.inconsistentTypesForSameIdentifier(outletId, outletType, source.type));
-        }
-      } else {
-        const assignResult = assign(sourceId, source.type, outletId, outletType, '');
-
-        if (assignResult.success) {
-          toJoin.push(assignResult.value);
-
-          if (connection.getSourceType() !== types.ShaderDataSource.Temporary) {
-            forSchema.requireBySourceType(source, connection.getSourceType());
-          }
-        } else {
-          console.warn(assignResult.value);
-        }
-      }
-    }
+export function assertConnectSuccess(result: ConnectResult): void {
+  if (!result.success) {
+    throw new Error(result.message);
   }
-
-  forSchema.body.push(() => toJoin.join('\n'));
 }
 
-export function connectInputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): void {
+type ConnectResult = {
+  success: boolean,
+  message?: string
+}
+
+function makeSuccessConnectResult(): ConnectResult {
+  return {success: true};
+}
+
+function makeErrorConnectResult(message: string): ConnectResult {
+  return {success: false, message};
+}
+
+function connect(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets, isInput: boolean): ConnectResult {
   const toJoin: Array<string> = [];
 
   for (let connectionName in toOutlet) {
     const outlet = toOutlet[connectionName];
     const connection = plug[connectionName];
 
-    forSchema.requireTemporary(outlet);
+    forSchema.requireTemporaryIfNotStatic(outlet);
 
     if (plug.hasOwnProperty(connectionName) && connection !== undefined) {
       const source = connection.getSource();
@@ -84,34 +60,58 @@ export function connectInputs(forSchema: types.ShaderSchema, plug: types.ShaderC
       const samplerSource = connection.getSamplerSource();
       const outletId = outlet.identifier;
       const outletType = outlet.type;
+      const srcIsSampler = source.type === 'sampler2D';
+      
+      if (srcIsSampler && !isInput) {
+        return makeErrorConnectResult('Sampler source is not a valid assignment target.')
 
-      if (source.type === 'sampler2D' && samplerSource === undefined) {
-        console.warn('Sampler source requires an additional samplerSource input.');
+      } else if (srcIsSampler && samplerSource === undefined) {
+        return makeErrorConnectResult('Sampler source requires an additional samplerSource input.')
 
       } else if (outletId === sourceId) {
         //  Ignore self- assignment
         if (outletType !== source.type) {
           //  Assignment between unlike types, but same identifier.
-          console.error(errors.inconsistentTypesForSameIdentifier(outletId, source.type, outletType));
+          if (isInput) {
+            return makeErrorConnectResult(errors.inconsistentTypesForSameIdentifier(outletId, source.type, outletType));
+          } else {
+            return makeErrorConnectResult(errors.inconsistentTypesForSameIdentifier(sourceId, outletType, source.type));
+          }
         }
       } else {
         const samplerSourceId = samplerSource === undefined ? '' : samplerSource.getSource().identifier;
-        const assignResult = assign(outletId, outletType, sourceId, source.type, samplerSourceId);
+        let assignResult: AssignmentResult;
+
+        if (isInput) {
+          assignResult = assign(outletId, outletType, sourceId, source.type, samplerSourceId);
+        } else {
+          assignResult = assign(sourceId, source.type, outletId, outletType, '');
+        }
 
         if (assignResult.success) {
           toJoin.push(assignResult.value);
 
-          if (connection.getSourceType() !== types.ShaderDataSource.Temporary) {
+          if (!isInput || connection.getSourceType() !== types.ShaderDataSource.Temporary) {
             forSchema.requireBySourceType(source, connection.getSourceType());
           }
         } else {
-          console.warn(assignResult.value);
+          return makeErrorConnectResult(assignResult.value);
         }
       }
     }
   }
 
   forSchema.body.push(() => toJoin.join('\n'));
+
+  return makeSuccessConnectResult();
+}
+
+export function connectOutputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): ConnectResult {
+  return connect(forSchema, plug, toOutlet, false);
+}
+
+export function connectInputs(forSchema: types.ShaderSchema, plug: types.ShaderComponentPlugs, toOutlet: types.ShaderComponentOutlets): ConnectResult {
+  return connect(forSchema, plug, toOutlet, true);
 }
 
 export function requireStatics(toSchema: types.ShaderSchema, statics: types.ShaderComponentPlugs): void {
@@ -137,55 +137,10 @@ export function requireStatics(toSchema: types.ShaderSchema, statics: types.Shad
   toSchema.head.push(() => toJoin.join('\n'));
 }
 
-function addRequiredUniforms(toSchema: types.ShaderSchema, requiredUniforms: types.StringMap<types.GLSLVariable>, material: Material): void {
-  for (let uniformName in requiredUniforms) {
-    const uniform = material.hasUniform(uniformName) ? material.makeVariableForUniform(uniformName) : requiredUniforms[uniformName];
-    toSchema.requireUniform(uniform);
-  }
-}
-
 export function requireTemporaries(toSchema: types.ShaderSchema, requiredTemporaries: types.StringMap<types.GLSLVariable>): void {
   for (let temporaryName in requiredTemporaries) {
     toSchema.requireTemporary(requiredTemporaries[temporaryName]);
   }
-}
-
-function addUniformsToTemporaries(toSchema: types.ShaderSchema, requirements: types.ShaderRequirements, forMaterial: Material): void {
-  const temporaries = requirements.temporaries;
-  const sampler2DCoordinates = requirements.sampler2DCoordinates;
-  const uniformDecls: Array<string> = [];
-
-  forMaterial.useActiveUniforms((uniform, kind) => {
-    if (kind in temporaries) {
-      const temporary = temporaries[kind];
-      
-      if (!temporary) {
-        console.error(`Invalid temporary for uniform kind: ${kind}`);
-        return;
-      }
-
-      uniformDecls.push(uniformToTemporary(uniform, temporary.identifier, temporary.type, sampler2DCoordinates));
-    }
-  });
-
-  toSchema.body.push(() => uniformDecls.join('\n'));
-}
-
-export function addRequirements(toSchema: types.ShaderSchema, requirements: types.ShaderRequirements, forMaterial: Material): void {
-  for (let i = 0; i < requirements.inputs.length; i++) {
-    toSchema.requireInput(requirements.inputs[i]);
-  }
-  for (let i = 0; i < requirements.outputs.length; i++) {
-    toSchema.requireOutput(requirements.outputs[i]);
-  }
-  addRequiredUniforms(toSchema,  requirements.uniforms, forMaterial);
-
-  for (let i = 0; i < requirements.conditionallyRequireForMaterial.length; i++) {
-    requirements.conditionallyRequireForMaterial[i](toSchema, forMaterial);
-  }
-
-  requireTemporaries(toSchema, requirements.temporaries);
-  addUniformsToTemporaries(toSchema, requirements, forMaterial);
 }
 
 export function singleComponentInitializerExpressionForType(type: types.GLSLTypes, to: string): string {
@@ -258,9 +213,8 @@ function sampler2DToTemporary(srcIdentifier: string, destIdentifier: string, des
 }
 
 export function demoteVector(srcType: types.GLSLTypes, srcIdentifier: string, destType: types.GLSLTypes): string {
-  const numSrcComponents = types.numComponentsInGLSLType(srcType);
   const numDestComponents = types.numComponentsInGLSLType(destType);
-  const numToDemote = numSrcComponents - numDestComponents;
+  const numToDemote = numDestComponents;
   const componentStr = xyzComponentString(numToDemote);
   return `${srcIdentifier}.${componentStr}`;
 }
@@ -278,11 +232,10 @@ export function promoteVector(srcType: types.GLSLTypes, srcIdentifier: string, d
 
   const joinStr = toJoin.join('');
 
-  const componentStr = xyzComponentString(numSrcComponents);
-  return `${destType}(${srcIdentifier}.${componentStr}${joinStr})`;
+  return `${destType}(${srcIdentifier}${joinStr})`;
 }
 
-type AssignmentResult = {
+export type AssignmentResult = {
   success: boolean,
   value: string
 };
@@ -295,7 +248,35 @@ function makeErrorAssignResult(msg: string): AssignmentResult {
   return {success: false, value: msg};
 }
 
-function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier: string, srcType: types.GLSLTypes, uvIdentifier: string): AssignmentResult {
+export function assignToVariableOrLogError(schema: types.ShaderSchema, dest: types.GLSLVariable, src: types.ShaderComponentPlug | types.GLSLVariable): void {
+  let assignResult: AssignmentResult;
+
+  if (types.typeTest.isShaderComponentPlug(src)) {
+    assignResult = assignPlugToVariable(dest.identifier, dest.type, src);
+  } else {
+    assignResult = assign(dest.identifier, dest.type, src.identifier, src.type, '');
+  }
+
+  if (!assignResult.success) {
+    console.error(assignResult.value);
+  } else {
+    schema.body.push(() => assignResult.value);
+  }
+}
+
+export function assignPlugToVariable(destIdent: string, destType: types.GLSLTypes, src: types.ShaderComponentPlug): AssignmentResult {
+  const source = src.getSource();
+  const samplerSource = src.getSamplerSource();
+
+  if (samplerSource === undefined) {
+    return assign(destIdent, destType, source.identifier, source.type, undefined);
+  } else {
+    const samplerIdent = samplerSource.getSource().identifier;
+    return assign(destIdent, destType, source.identifier, source.type, samplerIdent);
+  }
+}
+
+export function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier: string, srcType: types.GLSLTypes, uvIdentifier: string): AssignmentResult {
   if (destType === 'sampler2D') {
     return makeErrorAssignResult(`sampler2D "${destIdentifier}" is not a valid assignment target.`);
   }
@@ -319,26 +300,12 @@ function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier
     case 'vec4':
       if (types.numComponentsInGLSLType(srcType) < types.numComponentsInGLSLType(destType)) {
         return makeSuccessAssignResult(assignmentComponentsToString(destIdentifier, promoteVector(srcType, srcIdentifier, destType, 1)));
+      } else {
+        return makeSuccessAssignResult(assignmentComponentsToString(destIdentifier, demoteVector(srcType, srcIdentifier, destType)));
       }
   }
 
   return makeErrorAssignResult(errors.incompatibleTypesForAssignment(destIdentifier, destType, srcIdentifier, srcType));
-}
-
-function uniformToTemporary(uniform: types.UniformValue, temporaryIdentifier: string, temporaryType: types.GLSLTypes, uvIdentifier: string): string {
-  if (uniform.type === temporaryType) {
-    return assignmentComponentsToString(temporaryIdentifier, uniform.identifier);
-  };
-
-  switch (uniform.type) {
-    case 'float':
-      return expandFloatToComponents(uniform.identifier, temporaryIdentifier, temporaryType);
-    case 'sampler2D':
-      return sampler2DToTemporary(uniform.identifier, temporaryIdentifier, temporaryType, uvIdentifier);
-  }
-
-  console.warn(`Unsupported source uniform type: ${uniform.type} for destination type: ${temporaryType}.`);
-  return '';
 }
 
 function prefixedDeclarationToString(prefix: string, decl: types.GLSLVariable): string {

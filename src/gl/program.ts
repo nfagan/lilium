@@ -197,8 +197,8 @@ export class Program {
   }
 
   static fromSchemas(gl: WebGLRenderingContext, vertSchema: types.ShaderSchema, fragSchema: types.ShaderSchema): Program {
-    const vertSource = shaderBuilder.shaderSchemaToString(vertSchema);
-    const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
+    const vertSource = shaderBuilder.common.shaderSchemaToString(vertSchema);
+    const fragSource = shaderBuilder.common.shaderSchemaToString(fragSchema);
     return Program.fromSources(gl, vertSource, fragSource);
   }
 }
