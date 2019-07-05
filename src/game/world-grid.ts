@@ -131,14 +131,13 @@ export class WorldGridDrawable {
     plugInputs.modelColor = src;
     plugOutputs.modelColor.connectTo(fragOutput.modelColor);
 
-    const fragSchema = new types.ShaderSchema(types.Shader.Fragment);
+    const fragSchema = types.ShaderSchema.Fragment();
     shaderBuilder.physical.applyComponent(fragSchema, mat, plugInputs, plugOutputs);
     shaderBuilder.fragColor.applyComponent(fragSchema, mat, fragOutput);
 
     const fragSource = shaderBuilder.shaderSchemaToString(fragSchema);
     
     const prog = Program.fromSources(gl, gridSources.vertex, fragSource);
-    // const prog = Program.fromSources(gl, gridSources.vertex, gridSources)
 
     mat.removeUnusedUniforms(prog);
 

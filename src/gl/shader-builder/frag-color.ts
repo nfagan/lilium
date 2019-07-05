@@ -1,5 +1,5 @@
 import { types, Material } from '..';
-import { connectInputs, requireTemporaries } from './common';
+import { connectInputs } from './common';
 
 export type FragColorInputPlug = {
   modelColor: types.ShaderComponentPlug
@@ -13,7 +13,7 @@ const DefaultFragColorInputs = makeDefaultInputOutlet(types.DefaultShaderIdentif
 
 export function makeDefaultInputOutlet(identifiers: types.ShaderIdentifierMap): FragColorInputOutlet {
   return {
-    modelColor: types.makeGLSLVariable(identifiers.temporaries.modelColor.identifier, 'vec3')
+    modelColor: types.makeGLSLVariable(identifiers.temporaries.fragColor.identifier, 'vec4')
   }
 }
 
@@ -28,7 +28,7 @@ export function makeDefaultInputPlug(identifiers?: types.ShaderIdentifierMap): F
 }
 
 function assignFragColor(inputs: FragColorInputOutlet): string {
-  return `gl_FragColor = vec4(${inputs.modelColor.identifier}, 1.0);`;
+  return `gl_FragColor = ${inputs.modelColor.identifier};`;
 }
 
 export function applyComponent(toSchema: types.ShaderSchema, forMaterial: Material, plugInputs: FragColorInputPlug): void {

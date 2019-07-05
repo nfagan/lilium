@@ -1,4 +1,4 @@
-import { Material, Texture2D, Model, RenderContext, types, geometry, Vao, Renderer } from '../gl';
+import { Material, Texture2D, Model, RenderContext, types, geometry, Vao, Renderer, factory } from '../gl';
 import { asyncTimeout, loadImage } from '../util';
 
 export class SkyDomeResources {
@@ -60,8 +60,7 @@ export class SkyDomeDrawable {
       this.dispose();
     }
 
-    const gl = renderContext.gl;  
-    const sphereData = geometry.sphereInterleavedDataAndIndices();  
+    const gl = renderContext.gl;
     const mat = Material.NoLight();
 
     if (resources.skyImage) {
@@ -73,10 +72,8 @@ export class SkyDomeDrawable {
     const prog = renderer.requireProgram(mat);
     mat.removeUnusedUniforms(prog);
 
-    const attrs = [types.BuiltinAttribute.Position, types.BuiltinAttribute.Uv, types.BuiltinAttribute.Normal];
-    const vao = Vao.fromSimpleInterleavedFloatData(gl, prog, sphereData.vertexData, attrs, sphereData.indices);
-
-    const drawable = types.Drawable.indexed(renderContext, vao, sphereData.indices.length);
+    const vaoResult = factory.vao.makeSphereVao(renderContext.gl, prog);
+    const drawable = types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
     drawable.mode = gl.TRIANGLE_STRIP;
     const model = new Model(drawable, mat);
 

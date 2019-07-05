@@ -2,6 +2,11 @@ import * as types from '../types';
 import * as phong from './phong';
 import * as noLight from './no-light';
 import * as geometry from './geometry';
+import * as components from './components';
+import * as vertexPosition from './vertex-position';
+import * as vertexVaryings from './vertex-varyings';
+import * as worldPosition from './world-position';
+import * as projectivePosition from './projective-position';
 import * as physical from './physical';
 import * as fragColor from './frag-color';
 import { Program } from '../program';
@@ -74,13 +79,27 @@ function handleLightingModel(forMaterial: Material, fragSchema: types.ShaderSche
 }
 
 function makeProgram(gl: WebGLRenderingContext, forMaterial: Material): Program {
-  const fragSchema = new types.ShaderSchema(types.Shader.Fragment);
-  const vertSchema = new types.ShaderSchema(types.Shader.Vertex);
+  const vertSchema = types.ShaderSchema.Vertex();
+  const fragSchema = types.ShaderSchema.Fragment();
+
+  worldPosition.applyComponent(vertSchema, worldPosition.makeDefaultInputPlug(), worldPosition.makeDefaultOutputPlug());
+  projectivePosition.applyComponent(vertSchema, projectivePosition.makeDefaultInputPlug(), projectivePosition.makeDefaultOutputPlug());
+  vertexPosition.applyComponent(vertSchema, vertexPosition.makeDefaultInputPlug());
+
+  // const vertVaryingPlug = vertexVaryings.makeDefaultInputPlug();
+  // if (!forMaterial.hasTextureUniform()) {
+  //   vertVaryingPlug.uv = undefined;
+  // }
+
+  // vertexVaryings.applyComponent(vertSchema, vertVaryingPlug);
 
   geometry.applyBaseGeometryVertexPipeline(vertSchema, forMaterial);
   geometry.applyBaseGeometryFragmentPipeline(fragSchema, forMaterial);
 
   handleLightingModel(forMaterial, fragSchema);
+
+  // console.log(shaderSchemaToString(vertSchema));
+  // console.log(shaderSchemaToString(fragSchema));
 
   return Program.fromSchemas(gl, vertSchema, fragSchema);
 }

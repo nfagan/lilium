@@ -86,6 +86,12 @@ export function makeConcreteComponentPlug(source: GLSLVariable, sourceType: Shad
   return plug;
 }
 
+export function makeTemporaryComponentPlug(source: GLSLVariable, samplerSource?: ShaderComponentPlug): ShaderComponentPlug {
+  const plug = new ShaderComponentPlug();
+  plug.setConcreteSource(source, ShaderDataSource.Temporary, samplerSource);
+  return plug;
+}
+
 export class ShaderComponentPlug {
   readonly id: number;
   private source: GLSLVariable | ShaderComponentPlug;
@@ -223,7 +229,8 @@ type ShaderUniformMap = {
 };
 
 export type ShaderTemporaryMap = {
-  worldPosition: GLSLVariable
+  worldPosition: GLSLVariable,
+  projectivePosition: GLSLVariable,
   normal: GLSLVariable,
   position: GLSLVariable,
   normalToCamera: GLSLVariable,
@@ -233,6 +240,7 @@ export type ShaderTemporaryMap = {
   specularConstant: GLSLVariable,
   specularPower: GLSLVariable,
   modelColor: GLSLVariable,
+  fragColor: GLSLVariable,
   cameraPosition: GLSLVariable,
   uv: GLSLVariable,
   roughness: GLSLVariable,
@@ -281,6 +289,7 @@ export function makeDefaultShaderIdentifiers(): ShaderIdentifierMap {
     },
     temporaries: {
       worldPosition: {identifier: 'world_position', type: 'vec4'},
+      projectivePosition: {identifier: 'projective_position', type: 'vec4'},
       normal: {identifier: 'normal', type: 'vec3'},
       position: {identifier: 'position', type: 'vec3'},
       normalToCamera: {identifier: 'normal_to_camera', type: 'vec3'},
@@ -291,6 +300,7 @@ export function makeDefaultShaderIdentifiers(): ShaderIdentifierMap {
       specularConstant: {identifier: 'ks', type: 'float'},
       specularPower: {identifier: 'spec_pow', type: 'float'},
       modelColor: {identifier: 'use_color', type: 'vec3'},
+      fragColor: {identifier: 'frag_color', type: 'vec4'},
       uv: {identifier: 'uv', type: 'vec2'},
       roughness: {identifier: 'tmp_roughness', type: 'float'},
       metallic: {identifier: 'tmp_metallic', type: 'float'},
@@ -420,6 +430,17 @@ export type GLSLVariable = {
   isArray?: boolean,
   arraySize?: number
 };
+
+export function isGLSLVector(type: GLSLTypes): boolean {
+  switch (type) {
+    case 'vec2':
+    case 'vec3':
+    case 'vec4':
+      return true;
+    default:
+      return false;
+  }
+}
 
 export function makeAnonymousGLSLVariable(type: GLSLTypes, isArray?: boolean, arraySize?: number): GLSLVariable {
   return {identifier: '', type, isArray, arraySize};
@@ -756,6 +777,14 @@ export class ShaderSchema {
       this.addAttributesFromVboDescriptor(gl, descriptors[i]);
     }
     return this;
+  }
+
+  static Vertex(): ShaderSchema {
+    return new ShaderSchema(Shader.Vertex);
+  }
+
+  static Fragment(): ShaderSchema {
+    return new ShaderSchema(Shader.Fragment);
   }
 };
 

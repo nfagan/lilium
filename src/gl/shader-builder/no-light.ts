@@ -1,6 +1,6 @@
 import { types, Material } from '..';
 import * as components from './components';
-import { addRequirements, requireIdentifiers, applyMaterial, connectInputs, connectOutputs } from './common';
+import { requireIdentifiers, applyMaterial, connectInputs, connectOutputs } from './common';
 
 export type NoLightComponentInputPlug = {
   modelColor: types.ShaderComponentPlug,

@@ -188,7 +188,7 @@ export function addRequirements(toSchema: types.ShaderSchema, requirements: type
   addUniformsToTemporaries(toSchema, requirements, forMaterial);
 }
 
-function singleComponentInitializerExpressionForType(type: types.GLSLTypes, to: string): string {
+export function singleComponentInitializerExpressionForType(type: types.GLSLTypes, to: string): string {
   switch (type) {
     case 'float':
       return to;
@@ -257,6 +257,31 @@ function sampler2DToTemporary(srcIdentifier: string, destIdentifier: string, des
   return assignmentComponentsToString(destIdentifier, initializer);
 }
 
+export function demoteVector(srcType: types.GLSLTypes, srcIdentifier: string, destType: types.GLSLTypes): string {
+  const numSrcComponents = types.numComponentsInGLSLType(srcType);
+  const numDestComponents = types.numComponentsInGLSLType(destType);
+  const numToDemote = numSrcComponents - numDestComponents;
+  const componentStr = xyzComponentString(numToDemote);
+  return `${srcIdentifier}.${componentStr}`;
+}
+
+export function promoteVector(srcType: types.GLSLTypes, srcIdentifier: string, destType: types.GLSLTypes, fillComponent: number = 1, numDecimalPlaces: number = 1): string {
+  const numSrcComponents = types.numComponentsInGLSLType(srcType);
+  const numDestComponents = types.numComponentsInGLSLType(destType);
+  const numToFill = numDestComponents - numSrcComponents;
+  const fillWith = `${fillComponent.toFixed(numDecimalPlaces)}`;
+  const toJoin: Array<string> = [];
+
+  for (let i = 0; i < numToFill; i++) {
+    toJoin.push(',' + fillWith);
+  }
+
+  const joinStr = toJoin.join('');
+
+  const componentStr = xyzComponentString(numSrcComponents);
+  return `${destType}(${srcIdentifier}.${componentStr}${joinStr})`;
+}
+
 type AssignmentResult = {
   success: boolean,
   value: string
@@ -289,6 +314,12 @@ function assign(destIdentifier: string, destType: types.GLSLTypes, srcIdentifier
         return makeErrorAssignResult('Identifier of sample coordinates for sampler2D input was empty.');
       }
     }
+    case 'vec2':
+    case 'vec3':
+    case 'vec4':
+      if (types.numComponentsInGLSLType(srcType) < types.numComponentsInGLSLType(destType)) {
+        return makeSuccessAssignResult(assignmentComponentsToString(destIdentifier, promoteVector(srcType, srcIdentifier, destType, 1)));
+      }
   }
 
   return makeErrorAssignResult(errors.incompatibleTypesForAssignment(destIdentifier, destType, srcIdentifier, srcType));

@@ -28,11 +28,6 @@ type Game = {
   scene: wgl.Scene
 };
 
-// sun: {
-//   position: [50, 20, 50],
-//   color: [1, 1, 1]
-// },
-
 const GAME: Game = {
   mouse: wgl.debug.makeDebugMouseState(),
   keyboard: new wgl.Keyboard(),
@@ -45,7 +40,6 @@ const GAME: Game = {
   player: null,
   playerDrawable: null,
   frameTimer: null,
-  // sunPosition: [8, 10, 8],
   sunPosition: [50, 20, 50],
   sunColor: [1, 1, 1],
   airParticleOptions: {
@@ -96,7 +90,8 @@ function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lig
   mat.setUniformProperty('modelColor', lightColor);
   const prog = renderer.requireProgram(mat);
 
-  const drawable = wgl.factory.drawable.makeCubeDrawable(renderContext, prog);
+  const vaoResult = wgl.factory.vao.makeCubeVao(gl, prog);
+  const drawable = wgl.types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
 
   const model = new wgl.Model(drawable, mat);
   model.transform.translate(lightPos);
@@ -128,7 +123,8 @@ async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.Ren
   mat.setUniformProperty('roughness', 1);
 
   const prog = renderer.requireProgram(mat);
-  const drawable = wgl.factory.drawable.makeCubeDrawable(renderContext, prog);
+  const vaoResult = wgl.factory.vao.makeCubeVao(renderContext.gl, prog);
+  const drawable = wgl.types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
 
   const model = new wgl.Model(drawable, mat);
   model.transform.translate([10, 1.5, 10]);

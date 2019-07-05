@@ -37,7 +37,7 @@ export class Material {
   }
 
   private removeTexture(tex: Texture2D): void {
-    this.textureSet.removeTexture(tex as Texture2D);
+    this.textureSet.removeTexture(tex);
   }
 
   private initializeTextureSet(): void {
