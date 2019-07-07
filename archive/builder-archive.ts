@@ -1,3 +1,12 @@
+export type ShaderRequirements = {
+  inputs: Array<GLSLVariable>,
+  outputs: Array<GLSLVariable>,
+  temporaries: StringMap<GLSLVariable>,
+  uniforms: StringMap<GLSLVariable>,
+  sampler2DCoordinates: string,
+  conditionallyRequireForMaterial: Array<(schema: ShaderSchema, forMaterial: Material) => void>;
+};
+
 function addRequiredUniforms(toSchema: types.ShaderSchema, requiredUniforms: types.StringMap<types.GLSLVariable>, material: Material): void {
   for (let uniformName in requiredUniforms) {
     const uniform = material.hasUniform(uniformName) ? material.makeVariableForUniform(uniformName) : requiredUniforms[uniformName];

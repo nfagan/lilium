@@ -3,8 +3,8 @@ import { PlayerMovement, Player, WorldGrid, GrassTile,
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
   AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, 
   WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions } from '../src/game';
-import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage } from '../src/util';
-import { mat4 } from 'gl-matrix';
+import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage, loadImage } from '../src/util';
+import { mat4, glMatrix } from 'gl-matrix';
 
 type Game = {
   mouse: wgl.debug.DebugMouseState,
@@ -60,6 +60,33 @@ const GAME: Game = {
   scene: new wgl.Scene()
 };
 
+// async function makeFlower(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
+//   const gl = renderContext.gl;
+
+//   const flowerTexture = await asyncTimeout(() => loadImage('/texture/lilac.png'), 5e3);
+//   const tex = wgl.Texture2D.linearRepeatRGBA(gl);
+//   tex.wrapS = gl.CLAMP_TO_EDGE;
+//   tex.wrapT = gl.CLAMP_TO_EDGE;
+
+//   tex.bind();
+//   tex.configure();
+//   tex.fillImageElement(flowerTexture);
+
+//   const mat = wgl.Material.NoLight();
+//   mat.setUniformProperty('modelColor', tex);
+//   const prog = renderer.requireProgram(mat);
+
+//   const vaoResult = wgl.factory.vao.makeQuadUvVao(gl, prog);
+//   const drawable = wgl.types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
+
+//   const model = new wgl.Model(drawable, mat);
+//   model.transform.translate([10, 0, 10]);
+//   mat4.rotateZ(model.transform.matrix, model.transform.matrix, glMatrix.toRadian(180));
+//   model.transform.scale(10);
+
+//   return model;
+// }
+
 function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
   const gridDim = 50;
   const cellDims = [2, 0.5, 2];
@@ -99,7 +126,7 @@ function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lig
 }
 
 async function makeSkyDome(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
-  const resources = new SkyDomeResources('/texture/sky5.png', 5e3);
+  const resources = new SkyDomeResources('/texture/sky4.png', 5e3);
   await resources.load(err => console.log(err));
 
   const skyDrawable = new SkyDomeDrawable();
@@ -191,9 +218,6 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
   game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
 
-  // game.worldGrid.gridDrawable.update();
-  // game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
-
   frameTimer.reset();
 }
 
@@ -258,6 +282,7 @@ export async function main() {
   }
 
   const skyDome = await makeSkyDome(renderer, renderContext);
+  // const flower = await makeFlower(renderer, renderContext);
 
   const sun = wgl.Light.Directional();
   sun.setUniformProperty('color', GAME.sunColor);
@@ -267,6 +292,7 @@ export async function main() {
   const light2Model = makeLight(renderer, renderContext, [0, 8, 0], [1, 1, 1]);
   GAME.scene.addModel(sunModel);
   GAME.scene.addModel(light2Model);
+  // GAME.scene.addModel(flower);
 
   const sun2 = wgl.Light.Point();
   sun2.setUniformProperty('color', [1, 1, 1]);

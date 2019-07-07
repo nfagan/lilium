@@ -13,6 +13,15 @@ export function quadPositions(): Float32Array {
   ]);
 }
 
+export function quadPositionsUvs(): Float32Array {
+  return new Float32Array([
+    -1, -1, 1, 0, 0,
+    1, -1, 1, 1, 0,
+    1, 1, 1, 1, 1,
+    -1, 1, 1, 0, 1
+  ]);
+}
+
 export function quadIndices(): Uint16Array {
   return new Uint16Array([0,  1,  2, 0,  2,  3]);
 }

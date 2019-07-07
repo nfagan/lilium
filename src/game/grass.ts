@@ -424,14 +424,18 @@ export class GrassDrawable {
     }
 
     renderContext.bindVao(this.drawable.vao);
-  
+
+    gl.disable(gl.CULL_FACE);
+    this.drawable.draw();
     gl.enable(gl.CULL_FACE);
-    gl.cullFace(gl.BACK);
-    this.drawable.draw();
   
-    grassProg.set1i('invert_normal', 1);
-    gl.cullFace(gl.FRONT);
-    this.drawable.draw();
+    // gl.enable(gl.CULL_FACE);
+    // gl.cullFace(gl.BACK);
+    // this.drawable.draw();
+  
+    // grassProg.set1i('invert_normal', 1);
+    // gl.cullFace(gl.FRONT);
+    // this.drawable.draw();
   }
 
   create(modelOptions: GrassModelOptions): void {

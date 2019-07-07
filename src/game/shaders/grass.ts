@@ -195,7 +195,7 @@ vec3 point_light(vec3 light_position, vec3 light_color, vec3 normal, float diff_
 }
 
 float toon_constrain(float value) {
-  const float divisor = 20.0;
+  const float divisor = 5.0;
 
   float inv = 1.0/divisor;
 
@@ -229,7 +229,7 @@ void main() {
 
   vec3 use_color = color * point_light_contrib;
   // float use_alpha = mix(0.7, 1.0, v_height);
-  // const float use_alpha = 0.9;
+  // const float use_alpha = 0.97;
   const float use_alpha = 1.0;
 
   // use_color *= grass_color;

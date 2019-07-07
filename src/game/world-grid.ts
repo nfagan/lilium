@@ -248,7 +248,7 @@ export class WorldGridDrawable {
     {name: 'color', attributes: [types.makeAttribute('a_color', gl.FLOAT, 3, 1)], data: emptyFloatArray},
     {name: 'translation', attributes: [types.makeAttribute('a_translation', gl.FLOAT, 3, 1)], data: emptyFloatArray}];
   
-    const eboDescriptor = {name: 'indices', indices};
+    const eboDescriptor = types.makeAnonymousEboDescriptor(indices);
   
     const vao = Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
 

@@ -19,6 +19,17 @@ export function makeCubeVao(gl: WebGLRenderingContext, prog: Program, identifier
   };
 }
 
+export function makeQuadUvVao(gl: WebGLRenderingContext, prog: Program, identifiers?: types.ShaderIdentifierMap): VaoFactoryResult {
+  const quadData = geometry.quadPositionsUvs();
+  const quadIndices = geometry.quadIndices();
+  const attrs = [types.BuiltinAttribute.Position, types.BuiltinAttribute.Uv];
+
+  return {
+    vao: Vao.fromSimpleInterleavedFloatData(gl, prog, quadData, attrs, quadIndices, identifiers),
+    numIndices: quadIndices.length
+  };
+}
+
 export function makeSphereVao(gl: WebGLRenderingContext, prog: Program, identifiers?: types.ShaderIdentifierMap): VaoFactoryResult {
   const sphereData = geometry.sphereInterleavedDataAndIndices();
   const attrs = [types.BuiltinAttribute.Position, types.BuiltinAttribute.Uv, types.BuiltinAttribute.Normal];

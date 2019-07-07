@@ -1,6 +1,6 @@
 import { vec2, vec3, vec4, mat4 } from 'gl-matrix';
 import { BuiltinRealArray, PrimitiveTypedArray } from '../util';
-import { Vao, RenderContext, Program, Texture2D, Material } from '.';
+import { Vao, RenderContext, Program, Texture2D } from '.';
 
 export type StringMap<T> = {
   [k: string]: T
@@ -198,15 +198,6 @@ export class ShaderComponentPlug {
 export type ShaderComponentOutlets = StringMap<GLSLVariable>;
 export type ShaderComponentPlugs = StringMap<ShaderComponentPlug>;
 export type ShaderComponentStatics = StringMap<ShaderComponentPlug>;
-
-export type ShaderRequirements = {
-  inputs: Array<GLSLVariable>,
-  outputs: Array<GLSLVariable>,
-  temporaries: StringMap<GLSLVariable>,
-  uniforms: StringMap<GLSLVariable>,
-  sampler2DCoordinates: string,
-  conditionallyRequireForMaterial: Array<(schema: ShaderSchema, forMaterial: Material) => void>;
-};
 
 type ShaderAttributeMap = {
   position: string,
