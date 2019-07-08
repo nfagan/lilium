@@ -11,9 +11,11 @@ end
 gradients_per_octave = cell( num_octaves, 1 );
 
 for i = 1:num_octaves  
-  gradients = randn(num_dimensions, num_samples);
-  gradients = gradients ./ sqrt(sum(gradients .* gradients));
+  use_samples = repmat( num_samples, 1, num_dimensions );
+  use_dims = [ num_dimensions, use_samples ];
   
+  gradients = randn( use_dims );
+  gradients = gradients ./ sqrt(sum(gradients .* gradients));
   gradients_per_octave{i} = gradients;
   
   num_samples = num_samples * 2;
