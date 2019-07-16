@@ -3,5 +3,6 @@
 
 // import { main } from '../playground/debug-world2';
 import { main } from '../playground/debug-components';
+// import { main } from '../playground/debug-clouds';
 
 main();

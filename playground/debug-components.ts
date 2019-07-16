@@ -1,22 +1,32 @@
 import * as wgl from '../src/gl';
-import { PlayerMovement, Player, WorldGrid, GrassTile, 
+import { PlayerMovement, Player, GrassTile, 
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
   AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, 
-  WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions } from '../src/game';
-import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage, loadImage } from '../src/util';
-import { mat4, glMatrix } from 'gl-matrix';
+  WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions, WorldGridManipulator, GrassTextureManager } from '../src/game';
+import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage, loadImage, loadFloat32Buffer, loadUint8Buffer } from '../src/util';
+import { PlayerDrawable, PlayerDrawableResources } from './player-drawable';
+import { mat4 } from 'gl-matrix';
+
+const enum GridManipulationState {
+  Selecting,
+  Adding,
+  NotManipulating
+};
 
 type Game = {
+  gridManipulationState: GridManipulationState,
+  gridManipulator: WorldGridManipulator,
   mouse: wgl.debug.DebugMouseState,
   keyboard: wgl.Keyboard,
   airParticleComponent: AirParticles,
   grassComponent: GrassComponent,
+  playerDrawable: PlayerDrawable,
+  playerLight: wgl.Light,
   playerMovement: PlayerMovement,
   controller: Controller,
   moveControls: PlayerMoveControls,
   worldGrid: WorldGridComponent,
   player: Player,
-  playerDrawable: wgl.Model,
   frameTimer: Stopwatch,
   sunPosition: Array<number>,
   sunColor: Array<number>,
@@ -29,16 +39,19 @@ type Game = {
 };
 
 const GAME: Game = {
+  gridManipulationState: GridManipulationState.NotManipulating,
+  gridManipulator: null,
   mouse: wgl.debug.makeDebugMouseState(),
   keyboard: new wgl.Keyboard(),
   airParticleComponent: null,
+  playerDrawable: null,
+  playerLight: null,
   grassComponent: null,
   playerMovement: null,
   controller: null,
   moveControls: null,
   worldGrid: null,
   player: null,
-  playerDrawable: null,
   frameTimer: null,
   sunPosition: [50, 20, 50],
   sunColor: [1, 1, 1],
@@ -60,46 +73,18 @@ const GAME: Game = {
   scene: new wgl.Scene()
 };
 
-// async function makeFlower(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
-//   const gl = renderContext.gl;
-
-//   const flowerTexture = await asyncTimeout(() => loadImage('/texture/lilac.png'), 5e3);
-//   const tex = wgl.Texture2D.linearRepeatRGBA(gl);
-//   tex.wrapS = gl.CLAMP_TO_EDGE;
-//   tex.wrapT = gl.CLAMP_TO_EDGE;
-
-//   tex.bind();
-//   tex.configure();
-//   tex.fillImageElement(flowerTexture);
-
-//   const mat = wgl.Material.NoLight();
-//   mat.setUniformProperty('modelColor', tex);
-//   const prog = renderer.requireProgram(mat);
-
-//   const vaoResult = wgl.factory.vao.makeQuadUvVao(gl, prog);
-//   const drawable = wgl.types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
-
-//   const model = new wgl.Model(drawable, mat);
-//   model.transform.translate([10, 0, 10]);
-//   mat4.rotateZ(model.transform.matrix, model.transform.matrix, glMatrix.toRadian(180));
-//   model.transform.scale(10);
-
-//   return model;
-// }
-
 function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
-  const gridDim = 50;
+  const gridDim = 35;
   const cellDims = [2, 0.5, 2];
   const maxNumInstances = gridDim * gridDim * 2;
 
   const grid = new wgl.VoxelGrid([0, 0, 0], [gridDim, gridDim, gridDim], cellDims);
-  const worldGrid = new WorldGrid(grid, maxNumInstances);
   const floorDim = Math.floor(gridDim/2);
 
-  const worldGridDrawable = new WorldGridDrawable(grid, renderContext, worldGrid.maxNumFilledCells);
+  const worldGridDrawable = new WorldGridDrawable(grid, renderContext, maxNumInstances);
   worldGridDrawable.create();
 
-  const gridComponent = new WorldGridComponent(worldGrid, worldGridDrawable);
+  const gridComponent = new WorldGridComponent(grid, worldGridDrawable, maxNumInstances);
   gridComponent.fillGround(floorDim, floorDim);
 
   const dim = GAME.grassTileOptions.density * GAME.grassTileOptions.dimension;
@@ -110,15 +95,16 @@ function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
   return gridComponent;
 }
 
-function makeLight(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lightPos: wgl.types.Real3, lightColor: wgl.types.Real3): wgl.Model {
+function makeLightModel(renderer: wgl.Renderer, renderContext: wgl.RenderContext, lightPos: wgl.types.Real3, lightColor: wgl.types.Real3): wgl.Model {
   const gl = renderContext.gl;
 
   const mat = wgl.Material.NoLight();
   mat.setUniformProperty('modelColor', lightColor);
   const prog = renderer.requireProgram(mat);
 
-  const vaoResult = wgl.factory.vao.makeCubeVao(gl, prog);
+  const vaoResult = wgl.factory.vao.makeSphereVao(gl, prog);
   const drawable = wgl.types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
+  drawable.mode = vaoResult.drawMode;
 
   const model = new wgl.Model(drawable, mat);
   model.transform.translate(lightPos);
@@ -138,12 +124,7 @@ async function makeSkyDome(renderer: wgl.Renderer, renderContext: wgl.RenderCont
   return skyDrawable.model;
 }
 
-async function makePlayerDrawable(renderer: wgl.Renderer, renderContext: wgl.RenderContext): Promise<wgl.Model> {
-  const modelUrl = '/model/character2:character3.obj';
-  const modelObj = await asyncTimeout(() => loadText(modelUrl), 5e3);
-  const parse = new wgl.parse.Obj(modelObj);
-
-  // const mat = wgl.Material.Phong();
+function makeGrassCube(renderer: wgl.Renderer, renderContext: wgl.RenderContext): wgl.Model {
   const mat = wgl.Material.Physical();
   mat.setUniformProperty('modelColor', [1, 1, 0.2]);
   mat.setUniformProperty('metallic', 3);
@@ -183,7 +164,45 @@ function handleQuality(keyboard: wgl.Keyboard, qualityManager: ImageQualityManag
   return false;
 }
 
+function handleGridManipulation(game: Game, gl: WebGLRenderingContext, camera: wgl.ICamera, view: mat4, proj: mat4, aabb: wgl.math.Aabb): void {
+  if (game.gridManipulationState === GridManipulationState.Selecting) {    
+    // const x = game.controller.rotationalInput.x();
+    // const y = game.controller.rotationalInput.y();
+    const w = gl.canvas.clientWidth;
+    const h = gl.canvas.clientHeight;
+    const left = gl.canvas.getBoundingClientRect().left;
+    const top = gl.canvas.getBoundingClientRect().top;
+
+    const x = game.controller.rotationalInput.x() - left;
+    const y = game.controller.rotationalInput.y() - top;
+
+    game.gridManipulator.updateSelection(x, y, w, h, view, proj, camera.position);
+
+    if (game.gridManipulator.madeSelection()) {
+      game.gridManipulationState = GridManipulationState.Adding;
+    }
+
+  } else if (game.gridManipulationState === GridManipulationState.Adding) {
+    const dx = game.controller.rotationalInput.deltaX();
+    const dy = game.controller.rotationalInput.deltaY();
+
+    game.gridManipulator.updateAddition(dx, dy, aabb);
+
+    if (game.gridManipulator.madeAddition()) {
+      game.gridManipulator.clearAddition();
+      game.gridManipulator.clearSelection();
+      game.gridManipulationState = GridManipulationState.NotManipulating;
+    }
+  }
+}
+
 function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audioContext: AudioContext, camera: wgl.FollowCamera, game: Game) {
+  //  1) Enter selection mode. 
+  //  2) Hover cursor to preview selected cell.
+  //  3) Press on cell to activate it.
+  //  4) Drag on cell to extrude to create a new cell.
+  //  5) Exit selection mode.
+
   const frameTimer = game.frameTimer;
   const dt = Math.max(frameTimer.elapsedSecs(), 1/60);
   const playerAabb = game.player.aabb;
@@ -200,6 +219,8 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
     //
   }
 
+  handleGridManipulation(game, renderContext.gl, camera, view, proj, playerAabb);
+
   const imQuality = game.imageQualityManager;
   wgl.debug.beginRender(renderContext.gl, camera, getDpr(imQuality.getQuality()), imQuality.needsUpdate());
   imQuality.clearNeedsUpdate();
@@ -207,16 +228,21 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   const sunPos = game.sunPosition;
   const sunColor = game.sunColor;
 
+  game.playerLight.setUniformProperty('position', [playerAabb.midX(), playerAabb.maxY, playerAabb.midZ()]);
+
   renderer.render(game.scene, camera, view, proj);
 
-  game.worldGrid.gridDrawable.update();
+  game.worldGrid.gridDrawable.updateNewCells();
   game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
 
   game.grassComponent.update(dt, playerAabb);
   game.airParticleComponent.update(dt, playerAabb);
 
-  game.grassComponent.render(renderContext, camera, view, proj, sunPos, sunColor);
+  game.grassComponent.draw(renderContext, camera, view, proj, sunPos, sunColor);
   game.airParticleComponent.draw(camera.position, view, proj, sunPos, sunColor);
+
+  game.playerDrawable.update(playerAabb);
+  game.playerDrawable.draw(view, proj, camera, game.scene);
 
   frameTimer.reset();
 }
@@ -225,8 +251,37 @@ function fatalError(cause: string): FatalError {
   return new FatalError(cause, document.body);
 }
 
+function makeCanvasContainer(): HTMLElement {
+  // return document.body;
+  const wrapper = document.createElement('div');
+  wrapper.style.width = '100%';
+  wrapper.style.height = '100%';
+  wrapper.style.display = 'flex';
+  wrapper.style.alignItems = 'center';
+  wrapper.style.justifyContent = 'center';
+
+  const container = document.createElement('div');
+  container.style.maxWidth = '500px';
+  container.style.maxHeight = '500px';
+  container.style.width = '100%';
+  container.style.height = '100%';
+
+  container.addEventListener('click', e => {
+    if (GAME.gridManipulationState === GridManipulationState.NotManipulating) {
+      GAME.gridManipulationState = GridManipulationState.Selecting;
+    }
+  });
+
+  document.body.appendChild(wrapper);
+  wrapper.appendChild(container);
+
+  return container;
+}
+
 export async function main() {
-  const glResult = wgl.debug.createCanvasAndContext(document.body);
+  const canvasContainer = makeCanvasContainer();
+
+  const glResult = wgl.debug.createCanvasAndContext(canvasContainer);
   if (wgl.debug.checkError(glResult)) {
     fatalError('Failed to initialize rendering context: ' + glResult.unwrapErr());
     return;
@@ -252,54 +307,56 @@ export async function main() {
   gameUtil.makeTouchControls(controller, touchElements);
 
   const camera = wgl.debug.makeFollowCamera(renderContext.gl);
+  camera.rotate(Math.PI/4, -Math.PI/7);
 
   const gridComponent = makeWorldGrid(renderContext);
+  const gridManipulator = new WorldGridManipulator(gridComponent);
 
-  const airParticleResources = new AirParticleResources(5 * 1e3, '/sound/wind-a-short2.aac');
-  await airParticleResources.load(audioContext, err => { console.log(err); });
+  const airParticleResources = new AirParticleResources(5e3, '/sound/wind-a-short2.aac');
+  await airParticleResources.load(audioContext, err => console.log(err));
 
   const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource);
   airParticles.create(GAME.airParticleOptions);
 
-  const grassResources = new GrassResources(5 * 1e3, '/sound/lf_noise_short.m4a');
-  await grassResources.load(audioContext, err => { console.log(err); });
+  const grassResources = new GrassResources(5e3, '/sound/lf_noise_short.m4a');
+  await grassResources.load(audioContext, err => console.log(err));
 
   const grassComponent = new GrassComponent(renderContext, grassResources);
-  GAME.grassTileOptions.offsetY = gridComponent.worldGrid.voxelGrid.cellDimensions[1];
+  GAME.grassTileOptions.offsetY = gridComponent.voxelGrid.cellDimensions[1];
   grassComponent.create(GAME.grassTileOptions, GAME.grassModelOptions, GAME.grassTextureOptions);
 
-  const playerDims = [1.01, 1.01, 1.01];
+  const playerDrawableResources = new PlayerDrawableResources('/buffer/frame_64px_120frames.bin', 5e3);
+  await playerDrawableResources.load(err => console.log(err));
+
+  const playerDims = [1.01, 2.01, 1.01];
   const player = new Player(playerDims);
-  const playerMovement = new PlayerMovement(gridComponent.worldGrid.voxelGrid);
+  const playerMovement = new PlayerMovement(gridComponent.voxelGrid);
 
-  let playerDrawable: wgl.Model = null;
+  const playerDrawable = new PlayerDrawable(renderContext, renderer);
+  playerDrawable.create(playerDrawableResources);
 
-  try {
-    playerDrawable = await makePlayerDrawable(renderer, renderContext);
-  } catch (err) {
-    fatalError('Failed to load player model: ' + tryExtractErrorMessage(err));
-    return;
-  }
-
+  const grassCube = makeGrassCube(renderer, renderContext);
   const skyDome = await makeSkyDome(renderer, renderContext);
-  // const flower = await makeFlower(renderer, renderContext);
 
   const sun = wgl.Light.Directional();
   sun.setUniformProperty('color', GAME.sunColor);
   sun.setUniformProperty('position', GAME.sunPosition);
 
-  const sunModel = makeLight(renderer, renderContext, GAME.sunPosition, GAME.sunColor);
-  const light2Model = makeLight(renderer, renderContext, [0, 8, 0], [1, 1, 1]);
+  const sunModel = makeLightModel(renderer, renderContext, GAME.sunPosition, GAME.sunColor);
+  const light2Model = makeLightModel(renderer, renderContext, [0, 8, 0], [1, 1, 1]);
   GAME.scene.addModel(sunModel);
   GAME.scene.addModel(light2Model);
-  // GAME.scene.addModel(flower);
 
   const sun2 = wgl.Light.Point();
   sun2.setUniformProperty('color', [1, 1, 1]);
   sun2.setUniformProperty('position', [0, 8, 0]);
   GAME.scene.addLight(sun2);
 
-  player.aabb.moveTo3(8, 8, 8);
+  const playerLight = wgl.Light.Point();
+  playerLight.setUniformProperty('color', [0.005, 0.005, 0.005]);
+  GAME.scene.addLight(playerLight);
+
+  player.aabb.moveTo3(7.5, 7.5, 7.5);
 
   GAME.playerMovement = playerMovement;
   GAME.player = player;
@@ -307,10 +364,12 @@ export async function main() {
   GAME.worldGrid = gridComponent;
   GAME.airParticleComponent = airParticles;
   GAME.grassComponent = grassComponent;
+  GAME.gridManipulator = gridManipulator;
   GAME.moveControls = new PlayerMoveControls(playerMovement, controller);
   GAME.controller = controller;
   GAME.playerDrawable = playerDrawable;
-  GAME.scene.addModel(playerDrawable);
+  GAME.playerLight = playerLight;
+  // GAME.scene.addModel(grassCube);
   GAME.scene.addModel(skyDome);
   GAME.scene.addLight(sun);
 

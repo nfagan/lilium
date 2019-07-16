@@ -11,7 +11,7 @@ export class MousePicker {
     this.tmpVec4 = vec4.create();
   }
 
-  ray(out: vec3, x: number, y: number, view: mat4, projection: mat4, clientWidth: number, clientHeight: number): vec3 {
+  ray(out: vec3 | Array<number>, x: number, y: number, view: mat4, projection: mat4, clientWidth: number, clientHeight: number): void {
     const invProj = this.invProj;
     const invView = this.invView;
     const coords = this.tmpVec4;
@@ -38,8 +38,6 @@ export class MousePicker {
       out[i] = coords[i];
     }
 
-    vec3.normalize(out, out);
-
-    return out;
+    vec3.normalize(out as vec3, out);
   }
 }

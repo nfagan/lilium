@@ -557,7 +557,7 @@ export class GrassComponent {
     this.grassTextures.update(dt, playerAabb, 1, 1, bladeHeight);
   }
 
-  render(renderContext: RenderContext, camera: ICamera, view: mat4, proj: mat4, sunPosition: types.Real3, sunColor: types.Real3) {
+  draw(renderContext: RenderContext, camera: ICamera, view: mat4, proj: mat4, sunPosition: types.Real3, sunColor: types.Real3) {
     this.grassDrawable.draw(camera.position, view, proj, sunPosition, sunColor);
   }
 }

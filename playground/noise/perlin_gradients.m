@@ -1,5 +1,7 @@
 function gradients_per_octave = perlin_gradients(num_samples, num_dimensions, num_octaves)
 
+%   PERLIN_GRADIENTS -- Create gradients from which to generate Perlin noise.
+
 if ( nargin < 3 )
   num_octaves = 1;
 end

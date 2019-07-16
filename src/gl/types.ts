@@ -10,7 +10,6 @@ export namespace typeTest {
   export function isShaderComponentPlug(a: any): a is ShaderComponentPlug {
     return a instanceof ShaderComponentPlug;
   }
-
   export function isNumber(a: any): a is number {
     return typeof a === 'number';
   }
@@ -213,6 +212,7 @@ type ShaderVaryingMap = {
 
 type ShaderUniformMap = {
   model: string,
+  inverseTransposeModel: string,
   view: string,
   projection: string,
   cameraPosition: string,
@@ -273,6 +273,7 @@ export function makeDefaultShaderIdentifiers(): ShaderIdentifierMap {
     },
     uniforms: {
       model: 'model',
+      inverseTransposeModel: 'inv_trans_model',
       view: 'view',
       projection: 'projection',
       cameraPosition: 'camera_position',

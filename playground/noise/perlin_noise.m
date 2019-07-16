@@ -70,47 +70,33 @@ for i = 1:num_samples
     t0s = default_smooth( 1-t );
     t1s = default_smooth( t );
     
-    current_combs = combination_indices;
-    use_combined = adjacent_distances;
+    noise_result = adjacent_distances;
+    to_combine = zeros( 1, num_adjacent_gradients/2 );
+    last_num_inds = num_adjacent_gradients;
+    
+    h = 1;
+    stp = 1;
+    
+    for k = 1:numel(dimension_indices)
+      dim_indices = dimension_indices{k};
+      num_inds = size( dim_indices, 2 );
       
-    iter = num_adjacent_gradients / 2;
-    k = 1;
-
-    while ( iter >= 1 )
-      tdim0 = current_combs(1, :) == 0;
-      tdim1 = current_combs(1, :) == 1;
-
-      rest_combs = grid_indices_combinations( num_dims-k );
-      [num_remaining_dims, num_rest_combs] = size( rest_combs );
-
-      remaining_ind = true( 1, size(use_combined, 2) );
-      to_combine = zeros( 1, num_rest_combs );
-
-      for h = 1:num_rest_combs
-        ind0 = tdim0;
-        ind1 = tdim1;
-
-        remaining_ind(:) = true;
-
-        for hh = 1:num_remaining_dims
-          remaining_ind = remaining_ind & current_combs(hh+1, :) == rest_combs(hh, h);
-
-          ind0 = ind0 & remaining_ind;
-          ind1 = ind1 & remaining_ind;
-        end
-
-        grad0 = use_combined(ind0);
-        grad1 = use_combined(ind1);
-
-        to_combine(h) = grad0*t0s(k) + grad1*t1s(k);
+      if ( num_inds < last_num_inds )
+        noise_result = to_combine;
+        stp = 1;
+        h = h + 1;
       end
-
-      iter = iter/2;
-      k = k + 1;
-
-      noise_result = use_combined;
-      use_combined = to_combine;
-      current_combs = rest_combs;
+      
+      a = noise_result(dim_indices(1, :));
+      b = noise_result(dim_indices(2, :));
+      
+      to_combine(stp) = a*t0s(h) + b*t1s(h);
+      stp = stp + 1;
+      last_num_inds = num_inds;
+      
+      if ( k == numel(dimension_indices) )
+        noise_result = to_combine;
+      end
     end
     
     noise_result = noise_result(1)*t0s(num_dims) + noise_result(2)*t1s(num_dims);
@@ -190,3 +176,48 @@ validateattributes( samples, {'double', 'single'}, {'2d', 'nrows', size(gradient
   , mfilename, 'samples' );
 
 end
+
+    
+    
+%     current_combs = combination_indices;
+%     use_combined = adjacent_distances;
+%       
+%     iter = num_adjacent_gradients / 2;
+%     k = 1;
+% 
+%     while ( iter >= 1 )
+%       tdim0 = current_combs(1, :) == 0;
+%       tdim1 = current_combs(1, :) == 1;
+% 
+%       rest_combs = grid_indices_combinations( num_dims-k );
+%       [num_remaining_dims, num_rest_combs] = size( rest_combs );
+% 
+%       remaining_ind = true( 1, size(use_combined, 2) );
+%       to_combine = zeros( 1, num_rest_combs );
+% 
+%       for h = 1:num_rest_combs
+%         ind0 = tdim0;
+%         ind1 = tdim1;
+% 
+%         remaining_ind(:) = true;
+% 
+%         for hh = 1:num_remaining_dims
+%           remaining_ind = remaining_ind & current_combs(hh+1, :) == rest_combs(hh, h);
+% 
+%           ind0 = ind0 & remaining_ind;
+%           ind1 = ind1 & remaining_ind;
+%         end
+% 
+%         grad0 = use_combined(ind0);
+%         grad1 = use_combined(ind1);
+% 
+%         to_combine(h) = grad0*t0s(k) + grad1*t1s(k);
+%       end
+% 
+%       iter = iter/2;
+%       k = k + 1;
+% 
+%       noise_result = use_combined;
+%       use_combined = to_combine;
+%       current_combs = rest_combs;
+%     end

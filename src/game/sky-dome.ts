@@ -1,4 +1,4 @@
-import { Material, Texture2D, Model, RenderContext, types, geometry, Vao, Renderer, factory } from '../gl';
+import { Material, Texture2D, Model, RenderContext, types, Renderer, factory } from '../gl';
 import { asyncTimeout, loadImage } from '../util';
 
 export class SkyDomeResources {
@@ -74,7 +74,7 @@ export class SkyDomeDrawable {
 
     const vaoResult = factory.vao.makeSphereVao(renderContext.gl, prog);
     const drawable = types.Drawable.indexed(renderContext, vaoResult.vao, vaoResult.numIndices);
-    drawable.mode = gl.TRIANGLE_STRIP;
+    drawable.mode = vaoResult.drawMode;
     const model = new Model(drawable, mat);
 
     this.model = model;

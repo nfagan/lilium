@@ -1,6 +1,7 @@
 import { RenderContext } from './render-context';
 import { ProgramBuilder } from './shader-builder';
 import { Material } from './material';
+import { Light } from './lights';
 import { Program } from './program';
 import { Scene } from './scene';
 import { mat4 } from 'gl-matrix';
@@ -14,6 +15,7 @@ export class Renderer {
   private renderContext: RenderContext;
   private programBuilder: ProgramBuilder;
   private programsByMaterialId: Map<number, Program>;
+  private inverseTransposeModel: mat4;
   private textureSetter: (tex: Texture2D) => void;
   private textureFinisher: (tex: Texture2D) => void;
 
@@ -24,6 +26,34 @@ export class Renderer {
     this.identifiers = types.DefaultShaderIdentifiers;
     this.textureSetter = tex => textureSetter(this.renderContext, tex);
     this.textureFinisher = tex => textureFinisher(this.renderContext, tex);
+    this.inverseTransposeModel = mat4.create();
+  }
+
+  private makeCurrentInverseTransposeModel(model: mat4): void {
+    const invModel = this.inverseTransposeModel;
+    mat4.invert(mat4.transpose(invModel, model), invModel);
+  }
+
+  setTextures(mat: Material): void {
+    mat.useTextures(this.textureSetter);
+  }
+
+  unsetTextures(mat: Material): void {
+    mat.useTextures(this.textureFinisher);
+  }
+
+  setModelViewProjection(prog: Program, model: mat4, view: mat4, proj: mat4): void {
+    const idents = this.identifiers;
+    prog.setMat4(idents.uniforms.model, model);
+    prog.setMat4(idents.uniforms.view, view);
+    prog.setMat4(idents.uniforms.projection, proj);
+  }
+
+  setLightUniforms(prog: Program, lights: Array<Light>, camera: ICamera): void {
+    for (let j = 0; j < lights.length; j++) {
+      lights[j].setUniforms(prog);
+    }
+    prog.setVec3(this.identifiers.uniforms.cameraPosition, camera.position);
   }
 
   render(scene: Scene, camera: ICamera, view: mat4, proj: mat4): void {
@@ -41,15 +71,12 @@ export class Renderer {
       renderContext.useProgram(progForMaterial);
 
       if (material.descriptor.lightingModel !== types.LightingModel.None) {
-        for (let j = 0; j < lights.length; j++) {
-          lights[j].setUniforms(progForMaterial);
-        }
-        progForMaterial.setVec3(identifiers.uniforms.cameraPosition, camera.position);
+        this.setLightUniforms(progForMaterial, lights, camera);
+        this.makeCurrentInverseTransposeModel(model.transform.matrix);
+        progForMaterial.setMat4(identifiers.uniforms.inverseTransposeModel, this.inverseTransposeModel);
       }
 
-      progForMaterial.setMat4(identifiers.uniforms.model, model.transform.matrix);
-      progForMaterial.setMat4(identifiers.uniforms.view, view);
-      progForMaterial.setMat4(identifiers.uniforms.projection, proj);
+      this.setModelViewProjection(progForMaterial, model.transform.matrix, view, proj);
 
       material.useTextures(this.textureSetter);
       material.setUniforms(progForMaterial);

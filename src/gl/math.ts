@@ -4,6 +4,11 @@ import { BuiltinRealArray } from '../util';
 
 export const EPSILON = 0.000001;
 
+export function isPow2(num: number): boolean {
+  //  https://www.geeksforgeeks.org/program-to-find-whether-a-no-is-power-of-two/
+  return (num % 1 === 0) && num > 0 && (!(num & (num-1)));
+}
+
 export function distance3(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): number {
   const dx = x1 - x0;
   const dy = y1 - y0;
@@ -135,7 +140,7 @@ export class Ray {
     return out;
   }
 
-  set(origin: vec3, direction: vec3): Ray {
+  set(origin: types.Real3, direction: types.Real3): Ray {
     for (let i = 0; i < 3; i++) {
       this.origin[i] = origin[i];
       this.direction[i] = direction[i];
@@ -242,6 +247,11 @@ export class Aabb {
     this.maxY = aabb.maxY;
     this.minZ = aabb.minZ;
     this.maxZ = aabb.maxZ;
+  }
+
+  static copy(out: Aabb, a: Aabb): Aabb {
+    out.assign(a);
+    return out;
   }
 
   static fromValues(minX: number, maxX: number, minY: number, maxY: number, minZ: number, maxZ: number): Aabb {

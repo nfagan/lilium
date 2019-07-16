@@ -16,27 +16,30 @@ app.get('/', (req: Request, res: Response) => {
   res.sendFile('index.html', {root: __dirname});
 });
 
+app.get('/buffer/:bufferName', (req: Request, res: Response) => {
+  joinPathAndSendResourceOr404(res, 'res/buffers/', req.params.bufferName.replace(':', '/'));
+});
+
 app.get('/model/:modelName', (req: Request, res: Response) => {
-  const objPath = req.params.modelName.replace(':', '/');
-  const filePath = path.join(__dirname, 'res/models/', objPath);
-  sendFileOr404(res, filePath);
+  joinPathAndSendResourceOr404(res, 'res/models/', req.params.modelName.replace(':', '/'));
 });
 
 app.get('/sound/:soundName', (req: Request, res: Response) => {
-  const soundPath = req.params.soundName.replace(':', '/');
-  const filePath = path.join(__dirname, 'res/sounds/', soundPath);
-  sendFileOr404(res, filePath);
+  joinPathAndSendResourceOr404(res, 'res/sounds/', req.params.soundName.replace(':', '/'));
 });
 
 app.get('/texture/:textureName', (req: Request, res: Response) => {
-  const texturePath = req.params.textureName.replace(':', '/');
-  const filePath = path.join(__dirname, 'res/textures/', texturePath);
-  sendFileOr404(res, filePath);
+  joinPathAndSendResourceOr404(res, 'res/textures/', req.params.textureName.replace(':', '/'));
 });
 
 http.listen(process.env.PORT || 3000, () => {
   console.log('listening ...');
 });
+
+function joinPathAndSendResourceOr404(res: Response, outerDir: string, fileName: string): void {
+  const filePath = path.join(__dirname, outerDir, fileName);
+  sendFileOr404(res, filePath);
+}
 
 function sendFileOr404(res: Response, filePath: string) {
   fs.stat(filePath, (err, stat) => {

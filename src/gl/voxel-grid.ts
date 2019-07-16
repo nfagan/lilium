@@ -180,7 +180,7 @@ export class VoxelGrid {
     return this.isFilled3(ix, iy, iz);
   }
 
-  intersectingCell(outIdx: types.Real3, rayOrigin: vec3, rayDir: vec3): boolean {
+  intersectingCell(outIdx: types.Real3, rayOrigin: types.Real3, rayDir: types.Real3): boolean {
     const gridDims = this.gridDimensions;
     const cellDims = this.cellDimensions;
     const pos = this.position;

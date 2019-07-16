@@ -1,14 +1,21 @@
-import { types, VoxelGrid, collision, math, geometry, Vao, Vbo, RenderContext, Program, Material, shaderBuilder, Scene, Texture2D } from '../gl';
+import { types, VoxelGrid, collision, math, geometry, Vao, Vbo, RenderContext, Program, Material, shaderBuilder, Scene, MousePicker } from '../gl';
 import * as gridSources from './shaders/voxel-grid';
-import { mat4 } from 'gl-matrix';
+import { mat4, vec3 } from 'gl-matrix';
 
 export class WorldGridComponent {
-  gridDrawable: WorldGridDrawable;
-  worldGrid: WorldGrid;
+  readonly maxNumFilledCells: number;
+  readonly gridCollider: collision.VoxelGridCollider;
+  readonly gridCollisionResult: collision.VoxelGridCollisionResult;
 
-  constructor(worldGrid: WorldGrid, gridDrawable: WorldGridDrawable) {
-    this.worldGrid = worldGrid;
+  gridDrawable: WorldGridDrawable;
+  voxelGrid: VoxelGrid;
+
+  constructor(voxelGrid: VoxelGrid, gridDrawable: WorldGridDrawable, maxNumFilledCells: number) {
+    this.voxelGrid = voxelGrid;
     this.gridDrawable = gridDrawable;
+    this.maxNumFilledCells = maxNumFilledCells;
+    this.gridCollisionResult = new collision.VoxelGridCollisionResult();
+    this.gridCollider = new collision.VoxelGridCollider(voxelGrid);
   }
 
   fillGround(numX: number, numZ: number): void {
@@ -20,15 +27,14 @@ export class WorldGridComponent {
         atIdx[1] = 0;
         atIdx[2] = j;
 
-        this.worldGrid.unconditionalAddCell(atIdx);
-        this.gridDrawable.addCell(atIdx);
+        this.unconditionalAddCell(atIdx);
       }
     }    
   }
 
   encloseSquare(dim: number, offX: number, offZ: number, height: number): void {
     const indices = [0, 0, 0];
-    const grid = this.worldGrid.voxelGrid;
+    const grid = this.voxelGrid;
 
     grid.getCellIndexOf3(indices, offX, 0, offZ);
 
@@ -48,12 +54,10 @@ export class WorldGridComponent {
         indices[0] = i + minX;
         indices[1] = 1 + j;
         indices[2] = minZ;
-        this.worldGrid.unconditionalAddCell(indices);
-        this.gridDrawable.addCell(indices);
+        this.unconditionalAddCell(indices);
 
         indices[2] = maxZ;
-        this.worldGrid.unconditionalAddCell(indices);
-        this.gridDrawable.addCell(indices);
+        this.unconditionalAddCell(indices);
       }
     }
 
@@ -62,12 +66,10 @@ export class WorldGridComponent {
         indices[0] = minX;
         indices[1] = 1 + j;
         indices[2] = i + minZ;
-        this.worldGrid.unconditionalAddCell(indices);
-        this.gridDrawable.addCell(indices);
+        this.unconditionalAddCell(indices);
 
         indices[0] = maxX;
-        this.worldGrid.unconditionalAddCell(indices);
-        this.gridDrawable.addCell(indices);
+        this.unconditionalAddCell(indices);
       }
     }
 
@@ -76,9 +78,48 @@ export class WorldGridComponent {
       indices[1] = i + 1;
       indices[2] = maxZ;
 
-      this.worldGrid.unconditionalAddCell(indices);
-      this.gridDrawable.addCell(indices);
+      this.unconditionalAddCell(indices);
     }
+  }
+
+  private unconditionalAddCell(atIdx: types.Real3): void {
+    this.addCell(atIdx, null);
+  }
+
+  addCellIfNonOverlapping(atIdx: types.Real3, withAabb: math.Aabb): boolean {
+    return this.addCell(atIdx, withAabb);
+  }
+  
+  private addCell(atIdx: types.Real3, playerAabb: math.Aabb): boolean {
+    const grid = this.voxelGrid;
+    
+    if (!grid.isInBoundsVoxelIndex(atIdx) || grid.isFilled(atIdx)) {
+      return false;
+    }
+
+    grid.markFilled(atIdx);
+    //  Hack -- test to see if collision occurs with this new
+    //  cell. If so, unmark it, and return.
+    if (playerAabb !== null) {
+      this.gridCollider.collidesWithAabb3(this.gridCollisionResult, playerAabb, 0, 0, 0);
+
+      if (this.gridCollisionResult.collided) {
+        grid.markEmpty(atIdx);
+        return false;
+      }
+    }
+
+    this.gridDrawable.addCell(atIdx);
+
+    return true;
+
+    // const currIdx = this.filledCells.length;
+
+    // for (let i = 0; i < 3; i++) {
+    //   this.filledCells.push(atIdx[i]);
+    // }
+
+    // this.sub2ind.set(grid.subToInd(atIdx), currIdx);
   }
 }
 
@@ -92,6 +133,7 @@ export class WorldGridDrawable {
 
   private translationVbo: Vbo;
   private colorVbo: Vbo;
+  private currentCellColors: Float32Array;
   private tmpVec3: Float32Array;
   private material: Material;
 
@@ -157,7 +199,7 @@ export class WorldGridDrawable {
     }
   }
 
-  update(): void {
+  updateNewCells(): void {
     const numFilled = this.grid.countFilled();
     const numActiveInstances = this.drawable.numActiveInstances;
     const numToUpdate = numFilled - numActiveInstances;
@@ -191,17 +233,15 @@ export class WorldGridDrawable {
     this.translationVbo.subData(gl, tmpArray, byteOffset);
   
     for (let i = 0; i < numToUpdate; i++) {  
-      // tmpArray[i*3+0] = 0;
-      // tmpArray[i*3+1] = 0.45;
-      // tmpArray[i*3+2] = 0.02;
       tmpArray[i*3+0] = 1;
       tmpArray[i*3+1] = 1;
       tmpArray[i*3+2] = 1;
     }
 
-    this.colorVbo.bind(gl);
+    this.renderContext.bindVbo(this.colorVbo);
     this.colorVbo.subData(gl, tmpArray, byteOffset);
     this.drawable.numActiveInstances = numFilled;
+    this.currentCellColors = tmpArray;
   }
 
   draw(view: mat4, proj: mat4, camPos: types.Real3, scene: Scene): void {
@@ -214,7 +254,7 @@ export class WorldGridDrawable {
 
     prog.setMat4('view', view);
     prog.setMat4('projection', proj);
-    prog.setVec3(types.DefaultShaderIdentifiers.uniforms.cameraPosition, camPos);
+    prog.setVec3('camera_position', camPos);
     prog.set3f('scale', cellDims[0]/2, cellDims[1]/2, cellDims[2]/2);
 
     for (let i = 0; i < scene.lights.length; i++) {
@@ -277,67 +317,61 @@ export class WorldGridDrawable {
   }
 }
 
-export class WorldGrid {
-  voxelGrid: VoxelGrid;
-  readonly maxNumFilledCells: number;
+export class WorldGridManipulator {
+  private mousePicker: MousePicker;
+  private mouseRayDirection: Array<number>;
+  private gridComponent: WorldGridComponent;
+  private selectedCellIdx: Array<number>;
+  private selected: boolean;
+  private added: boolean;
 
-  private gridCollisionResult: collision.VoxelGridCollisionResult;
-  private gridCollider: collision.VoxelGridCollider;
-
-  private sub2ind: Map<number, number>;
-
-  // grid: grid,
-  //   gridCollisionResult: new collision.VoxelGridCollisionResult(),
-  //   gridCollider: new collision.VoxelGridCollider(grid),
-  //   maxNumCells,
-  //   filled: [],
-  //   colors: [],
-  //   sub2ind: new Map<number, number>(),
-  //   lastLinearInd: null,
-  //   lastVoxel: [],
-  //   lastColor: []
-  
-  constructor(voxelGrid: VoxelGrid, maxNumFilledCells: number) {
-    this.voxelGrid = voxelGrid;
-    this.maxNumFilledCells = maxNumFilledCells;
-    this.gridCollisionResult = new collision.VoxelGridCollisionResult();
-    this.gridCollider = new collision.VoxelGridCollider(voxelGrid);
-    this.sub2ind = new Map<number, number>();
+  constructor(gridComponent: WorldGridComponent) {
+    this.gridComponent = gridComponent;
+    this.mousePicker = new MousePicker();
+    this.mouseRayDirection = [0, 0, 0];
+    this.selectedCellIdx = [0, 0, 0];
+    this.selected = false;
+    this.added = false;
   }
 
-  unconditionalAddCell(atIdx: types.Real3): void {
-    this.addCell(atIdx, null);
+  madeSelection(): boolean {
+    return this.selected;
   }
 
-  addCellIfNonOverlapping(atIdx: types.Real3, withAabb: math.Aabb): void {
-    this.addCell(atIdx, withAabb);
+  madeAddition(): boolean {
+    return this.added;
   }
-  
-  private addCell(atIdx: types.Real3, playerAabb: math.Aabb): void {
-    const grid = this.voxelGrid;
-    
-    if (!grid.isInBoundsVoxelIndex(atIdx) || grid.isFilled(atIdx)) {
+
+  clearSelection(): void {
+    this.selected = false;
+  }
+
+  clearAddition(): void {
+    this.added = false;
+  }
+
+  updateAddition(dx: number, dy: number, playerAabb: math.Aabb): void {
+    if (!this.selected) {
+      console.warn('No cell yet selected.');
       return;
     }
 
-    grid.markFilled(atIdx);
-    //  Hack -- test to see if collision occurs with this new
-    //  cell. If so, unmark it, and return.
-    if (playerAabb !== null) {
-      this.gridCollider.collidesWithAabb3(this.gridCollisionResult, playerAabb, 0, 0, 0);
+    const cellIdx = this.selectedCellIdx;
+    cellIdx[1]++;
+    this.added = this.gridComponent.addCellIfNonOverlapping(cellIdx, playerAabb);
+  }
 
-      if (this.gridCollisionResult.collided) {
-        grid.markEmpty(atIdx);
-        return;
-      }
+  updateSelection(x: number, y: number, w: number, h: number, view: mat4, proj: mat4, camPos: vec3): void {
+    this.mousePicker.ray(this.mouseRayDirection, x, y, view, proj, w, h);
+
+    const cellIdx = this.selectedCellIdx;
+    const grid = this.gridComponent.voxelGrid;
+    const intersects = grid.intersectingCell(cellIdx, camPos, this.mouseRayDirection);
+
+    if (!intersects) {
+      return;
     }
 
-    // const currIdx = this.filledCells.length;
-
-    // for (let i = 0; i < 3; i++) {
-    //   this.filledCells.push(atIdx[i]);
-    // }
-
-    // this.sub2ind.set(grid.subToInd(atIdx), currIdx);
+    this.selected = true;
   }
 }

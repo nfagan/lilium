@@ -5,7 +5,8 @@ import * as types from '../types';
 
 type VaoFactoryResult = {
   vao: Vao,
-  numIndices: number
+  numIndices: number,
+  drawMode: number
 };
 
 export function makeCubeVao(gl: WebGLRenderingContext, prog: Program, identifiers?: types.ShaderIdentifierMap): VaoFactoryResult {
@@ -15,7 +16,8 @@ export function makeCubeVao(gl: WebGLRenderingContext, prog: Program, identifier
 
   return {
     vao: Vao.fromSimpleInterleavedFloatData(gl, prog, cubeData, attrs, cubeIndices, identifiers),
-    numIndices: cubeIndices.length
+    numIndices: cubeIndices.length,
+    drawMode: gl.TRIANGLES
   };
 }
 
@@ -26,7 +28,8 @@ export function makeQuadUvVao(gl: WebGLRenderingContext, prog: Program, identifi
 
   return {
     vao: Vao.fromSimpleInterleavedFloatData(gl, prog, quadData, attrs, quadIndices, identifiers),
-    numIndices: quadIndices.length
+    numIndices: quadIndices.length,
+    drawMode: gl.TRIANGLES
   };
 }
 
@@ -36,6 +39,7 @@ export function makeSphereVao(gl: WebGLRenderingContext, prog: Program, identifi
   
   return {
     vao: Vao.fromSimpleInterleavedFloatData(gl, prog, sphereData.vertexData, attrs, sphereData.indices, identifiers),
-    numIndices: sphereData.indices.length
+    numIndices: sphereData.indices.length,
+    drawMode: gl.TRIANGLE_STRIP
   };
 }

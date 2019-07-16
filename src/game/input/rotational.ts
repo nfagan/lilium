@@ -62,6 +62,14 @@ export class RotationalInput {
     }
   }
 
+  x(): number {
+    return this.currX;
+  }
+
+  y(): number {
+    return this.currY;
+  }
+
   bindToMouseMove(el: HTMLElement): void {
     const self = this;
 

@@ -1,5 +1,5 @@
 import * as types from '../types';
-import { phong, noLight, common, vertexPosition, worldPosition, projectivePosition, physical, fragColor } from '.';
+import { phong, noLight, common, vertexPosition, worldPosition, worldNormal, projectivePosition, physical, fragColor } from '.';
 import { Program } from '../program';
 import { Material } from '../material';
 import { Stopwatch } from '../../util';
@@ -105,6 +105,9 @@ function handleGeometry(forMaterial: Material, vertSchema: types.ShaderSchema, f
   const worldInput = worldPosition.makeDefaultInputPlug(identifiers);
   const worldOutput = worldPosition.makeDefaultOutputPlug(identifiers);
   //
+  const normInput = worldNormal.makeDefaultInputPlug(identifiers);
+  const normOutput = worldNormal.makeDefaultOutputPlug(identifiers);
+  //
   const projInput = projectivePosition.makeDefaultInputPlug(identifiers);
   const projOutput = projectivePosition.makeDefaultOutputPlug(identifiers);
   //
@@ -123,7 +126,8 @@ function handleGeometry(forMaterial: Material, vertSchema: types.ShaderSchema, f
   }
 
   if (needsNormal) {
-    common.assignToVariableOrLogError(vertSchema, normVarying, normAttr);
+    worldNormal.applyComponent(vertSchema, normInput, normOutput);
+    // common.assignToVariableOrLogError(vertSchema, normVarying, normOutput.normal);
   }
 
   if (needsUv) {
