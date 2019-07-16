@@ -398,18 +398,6 @@ eval("\nfunction __export(m) {\n    for (var p in m) if (!exports.hasOwnProperty
 
 /***/ }),
 
-/***/ "./build/src/gl/factory/drawable.js":
-/*!******************************************!*\
-  !*** ./build/src/gl/factory/drawable.js ***!
-  \******************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-"use strict";
-eval("\nexports.__esModule = true;\n\n\n//# sourceURL=webpack:///./build/src/gl/factory/drawable.js?");
-
-/***/ }),
-
 /***/ "./build/src/gl/factory/index.js":
 /*!***************************************!*\
   !*** ./build/src/gl/factory/index.js ***!
@@ -418,7 +406,7 @@ eval("\nexports.__esModule = true;\n\n\n//# sourceURL=webpack:///./build/src/gl/
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
-eval("\nexports.__esModule = true;\nvar vao = __webpack_require__(/*! ./vao */ \"./build/src/gl/factory/vao.js\");\nexports.vao = vao;\nvar drawable = __webpack_require__(/*! ./drawable */ \"./build/src/gl/factory/drawable.js\");\nexports.drawable = drawable;\n\n\n//# sourceURL=webpack:///./build/src/gl/factory/index.js?");
+eval("\nexports.__esModule = true;\nvar vao = __webpack_require__(/*! ./vao */ \"./build/src/gl/factory/vao.js\");\nexports.vao = vao;\n\n\n//# sourceURL=webpack:///./build/src/gl/factory/index.js?");
 
 /***/ }),
 
