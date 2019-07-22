@@ -32,9 +32,15 @@ export function makeAudioBufferSamplers(numSamplers: number, bufferSource: Audio
   return makeNormalizedRandomizedSamplers(numSamplers, getBufferSourceNodeChannelData(bufferSource));
 }
 
-function addTouchListener(element: HTMLDivElement, func: (val: number) => void): void {
-  element.addEventListener('touchstart', _ => func(1));
-  element.addEventListener('touchend', _ => func(0));
+function addTouchListener(element: HTMLDivElement, func: (v: number) => void): void {
+  element.addEventListener('touchstart', e => {
+    e.stopPropagation();
+    func(1);
+  });
+  element.addEventListener('touchend', e => {
+    e.stopPropagation();
+    func(0);
+  });
 }
 
 export function makeTouchControls(controller: Controller, touchElements: debug.DebugTouchControls): void {
@@ -46,5 +52,8 @@ export function makeTouchControls(controller: Controller, touchElements: debug.D
   addTouchListener(touchElements.up, directional.forwards.bind(directional));
   addTouchListener(touchElements.down, directional.backwards.bind(directional));
 
-  touchElements.jump.addEventListener('touchstart', _ => jumpButton.press());
+  touchElements.jump.addEventListener('touchstart', e => {
+    e.stopPropagation();
+    jumpButton.press();
+  });
 }

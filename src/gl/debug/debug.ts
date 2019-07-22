@@ -447,11 +447,15 @@ export function createCanvasAndContext(appendTo: HTMLElement): Result<WebGLRende
   return Result.Ok(gl);
 }
 
-export function setupDocumentBody(mouseState: DebugMouseState): void {
+export function maximizeDocumentBody(): void {
   ['left', 'top', 'margin', 'padding'].map(v => document.body.style[v as any] = '0');
   document.body.style.position = 'fixed';
   document.body.style.height = '100%';
   document.body.style.width = '100%';
+}
+
+export function setupDocumentBody(mouseState: DebugMouseState): void {
+  maximizeDocumentBody();
 
   document.body.addEventListener('touchstart', e => {
     e.preventDefault();

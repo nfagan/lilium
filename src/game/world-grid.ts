@@ -136,6 +136,7 @@ export class WorldGridDrawable {
   private currentCellColors: Float32Array;
   private tmpVec3: Float32Array;
   private material: Material;
+  private isDebug: boolean = false;
 
   private filledIndices: Array<number>;
 
@@ -208,7 +209,9 @@ export class WorldGridDrawable {
       return;
     }
 
-    console.log(`Updating ${numToUpdate}; numActive: ${numActiveInstances}`);
+    if (this.isDebug) {
+      console.log(`Updating ${numToUpdate}; numActive: ${numActiveInstances}`);
+    }
 
     const offsetFilled = numActiveInstances * 3;
     const byteOffset = offsetFilled * Float32Array.BYTES_PER_ELEMENT;

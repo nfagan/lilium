@@ -1,5 +1,5 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, math, makeAttribute, RenderContext } from '../src/gl';
-import { Result, asyncTimeout, loadAudioBuffer } from '../src/util';
+import { Result, asyncTimeout, loadAudioBufferSourceNode } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
 import { Player, AirParticles, AirParticleResources, components, AirParticleOptions, GrassModelOptions, GrassTile, GrassTextureOptions } from '../src/game';

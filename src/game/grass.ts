@@ -1,5 +1,5 @@
 import { Texture2D, math, debug, RenderContext, types, Vao, Program, ICamera } from '../gl';
-import { NumberSampler, asyncTimeout, loadAudioBuffer } from '../util';
+import { NumberSampler, asyncTimeout, loadAudioBufferSourceNode } from '../util';
 import * as gameUtil from './util';
 import * as grassProgramSources from './shaders/grass';
 import { mat4 } from 'gl-matrix';
@@ -505,7 +505,7 @@ export class GrassResources {
   
   async load(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
     try {
-      const noiseNode = await asyncTimeout(() => loadAudioBuffer(audioContext, this.noiseUrl), this.timeoutMs);
+      const noiseNode = await asyncTimeout(() => loadAudioBufferSourceNode(audioContext, this.noiseUrl), this.timeoutMs);
       this.noiseSource = gameUtil.getBufferSourceNodeChannelData(noiseNode);
     } catch (err) {
       errCb(err);
@@ -514,6 +514,8 @@ export class GrassResources {
 }
 
 export class GrassComponent {
+  isPlaying: boolean;
+
   grassTextures: GrassTextureManager;
   grassDrawable: GrassDrawable;
 
@@ -525,6 +527,7 @@ export class GrassComponent {
     this.resources = resources;
     this.grassTextures = null;
     this.grassDrawable = null;
+    this.isPlaying = true;
   }
 
   dispose(): void {
@@ -552,9 +555,15 @@ export class GrassComponent {
     this.grassDrawable = grassDrawable;
   }
 
+  togglePlaying(): void {
+    this.isPlaying = !this.isPlaying;
+  }
+
   update(dt: number, playerAabb: math.Aabb): void {
-    const bladeHeight = this.grassDrawable.scale[1];
-    this.grassTextures.update(dt, playerAabb, 1, 1, bladeHeight);
+    if (this.isPlaying) {
+      const bladeHeight = this.grassDrawable.scale[1];
+      this.grassTextures.update(dt, playerAabb, 1, 1, bladeHeight);
+    }
   }
 
   draw(renderContext: RenderContext, camera: ICamera, view: mat4, proj: mat4, sunPosition: types.Real3, sunColor: types.Real3) {

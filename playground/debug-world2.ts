@@ -1,6 +1,6 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, VoxelGrid, collision, MousePicker, math, types, 
   Texture2D, parse, RenderContext } from '../src/gl';
-import { Result, Stopwatch, loadAudioBuffer, loadImage, loadText, asyncTimeout } from '../src/util';
+import { Result, Stopwatch, loadAudioBufferSourceNode, loadImage, loadText, asyncTimeout } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
 import * as grassSources from './shaders/debug-grass2';
@@ -111,7 +111,7 @@ function createSimpleProgram(gl: WebGLRenderingContext): Result<Program, string>
 
 async function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
   const soundUrl = '/sound/lf_noise_short.m4a';
-  const buffer = await asyncTimeout(() => loadAudioBuffer(audioContext, soundUrl), 10000);
+  const buffer = await asyncTimeout(() => loadAudioBufferSourceNode(audioContext, soundUrl), 10000);
   return buffer;
 }
 

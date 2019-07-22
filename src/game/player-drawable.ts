@@ -1,5 +1,5 @@
-import { math, RenderContext, factory, Program, Material, Renderer, types, ICamera, Scene, Texture2D } from '../src/gl';
-import { asyncTimeout, loadUint8Buffer } from '../src/util';
+import { math, RenderContext, factory, Program, Material, Renderer, types, ICamera, Scene, Texture2D } from '../gl';
+import { asyncTimeout, loadUint8Buffer } from '../util';
 import { mat4 } from 'gl-matrix';
 
 export class PlayerDrawableResources {
@@ -59,6 +59,8 @@ function makePerlinNoiseTexture(gl: WebGLRenderingContext, bytes: Uint8Array): T
 }
 
 export class PlayerDrawable {
+  isPlaying: boolean;
+
   private renderContext: RenderContext;
   private renderer: Renderer;
   private program: Program;
@@ -77,6 +79,7 @@ export class PlayerDrawable {
     this.tmpMat4 = mat4.create();
     this.material = this.makeMaterial();
     this.identifiers = types.DefaultShaderIdentifiers;
+    this.isPlaying = true;
   }
 
   private makeMaterial(): Material {
@@ -94,6 +97,10 @@ export class PlayerDrawable {
     const drawable = types.Drawable.indexed(this.renderContext, vaoResult.vao, vaoResult.numIndices);
     drawable.mode = vaoResult.drawMode;
     return drawable;
+  }
+
+  togglePlaying(): void {
+    this.isPlaying = !this.isPlaying;
   }
 
   dispose(): void {
@@ -124,7 +131,7 @@ export class PlayerDrawable {
   }
 
   update(aabb: math.Aabb): void {
-    if (!this.isCreated) {
+    if (!this.isCreated || !this.isPlaying) {
       return;
     }
 

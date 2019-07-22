@@ -153,6 +153,7 @@ export class ProgramBuilder {
   private gl: WebGLRenderingContext;
   private programs: ProgramCacheMap;
   private stopWatch: Stopwatch;
+  private isDebug: boolean = false;
 
   constructor(gl: WebGLRenderingContext) {
     this.gl = gl;
@@ -163,7 +164,11 @@ export class ProgramBuilder {
   private makeProgram(progHash: string, forMaterial: Material): Program {
     this.stopWatch.reset();
     const prog = makeProgram(this.gl, forMaterial);
-    console.log(`Made new program in ${this.stopWatch.elapsed().toFixed(2)} ms.`);
+
+    if (this.isDebug) {
+      console.log(`Made new program in ${this.stopWatch.elapsed().toFixed(2)} ms.`);
+    }
+
     this.programs[progHash] = prog;
     return prog;
   }
@@ -175,7 +180,9 @@ export class ProgramBuilder {
     if (maybeProg === undefined) {
       return this.makeProgram(programInfoHash, forMaterial);
     } else {
-      console.log('Using cached program ...');
+      if (this.isDebug) {
+        console.log('Using cached program ...');
+      }
       return maybeProg;
     }
   }

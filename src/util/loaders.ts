@@ -29,7 +29,23 @@ export async function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export async function loadAudioBuffer(audioContext: AudioContext, url: string): Promise<AudioBufferSourceNode> {
+export async function loadAudioBuffer(audioContext: AudioContext, url: string): Promise<AudioBuffer> {
+  return new Promise<AudioBuffer>((resolve, reject) => {
+    const req = new XMLHttpRequest();
+    req.responseType = 'arraybuffer';
+
+    req.onload = () => {
+      const audioData = req.response;
+      audioContext.decodeAudioData(audioData, buffer => resolve(buffer), err => reject(err));
+    };
+
+    req.onerror = req => reject(req);
+    req.open('GET', url, true);
+    req.send();
+  });
+}
+
+export async function loadAudioBufferSourceNode(audioContext: AudioContext, url: string): Promise<AudioBufferSourceNode> {
   return new Promise<AudioBufferSourceNode>((resolve, reject) => {
     const req = new XMLHttpRequest();
     req.responseType = 'arraybuffer';

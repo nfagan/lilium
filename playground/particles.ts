@@ -1,5 +1,5 @@
 import { debug, Program, Vao, math, ICamera, types, Texture2D } from '../src/gl';
-import { Result, NumberSampler, asyncTimeout, loadAudioBuffer, loadImage } from '../src/util';
+import { Result, NumberSampler, asyncTimeout, loadAudioBufferSourceNode, loadImage } from '../src/util';
 import { mat4 } from 'gl-matrix';
 import * as particleSources from './shaders/debug-particles';
 import { gameUtil } from '../src/game';
@@ -156,7 +156,7 @@ async function makeTextures(gl: WebGLRenderingContext): Promise<Textures> {
 async function makeSounds(ac: AudioContext): Promise<Sounds> {
   // const noiseUrl = '/sound/wind-a.m4a';
   const noiseUrl = '/sound/wind-a-short2.aac';
-  const noiseSound = await asyncTimeout(() => loadAudioBuffer(ac, noiseUrl), 10000);
+  const noiseSound = await asyncTimeout(() => loadAudioBufferSourceNode(ac, noiseUrl), 10000);
   return {noise: noiseSound};
 }
 

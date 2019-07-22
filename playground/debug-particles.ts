@@ -1,5 +1,5 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, math, makeAttribute, ICamera, types, Texture2D } from '../src/gl';
-import { Result, NumberSampler, asyncTimeout, loadAudioBuffer, loadImage } from '../src/util';
+import { Result, NumberSampler, asyncTimeout, loadAudioBufferSourceNode, loadImage } from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
 import * as particleSources from './shaders/debug-particles';
@@ -182,7 +182,7 @@ async function makeTextures(gl: WebGLRenderingContext): Promise<Textures> {
 async function makeSounds(ac: AudioContext): Promise<Sounds> {
   // const noiseUrl = '/sound/lf_noise_short.m4a';
   const noiseUrl = '/sound/wind-a-short2.aac';
-  const noiseSound = await asyncTimeout(() => loadAudioBuffer(ac, noiseUrl), 1000);
+  const noiseSound = await asyncTimeout(() => loadAudioBufferSourceNode(ac, noiseUrl), 1000);
   return {noise: noiseSound};
 }
 

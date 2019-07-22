@@ -1,5 +1,5 @@
 import { debug, Program, Vao, math, types, RenderContext, Vbo, geometry } from '../gl';
-import { NumberSampler, asyncTimeout, loadAudioBuffer } from '../util';
+import { NumberSampler, asyncTimeout, loadAudioBufferSourceNode } from '../util';
 import * as programSources from './shaders/particles';
 import { mat4 } from 'gl-matrix';
 import { gameUtil } from '.';
@@ -18,7 +18,7 @@ export class AirParticleResources {
 
   async load(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
     try {
-      const noiseSource = await asyncTimeout(() => loadAudioBuffer(audioContext, this.noiseUrl), this.loadTimeout);
+      const noiseSource = await asyncTimeout(() => loadAudioBufferSourceNode(audioContext, this.noiseUrl), this.loadTimeout);
       this.noiseSource = gameUtil.getBufferSourceNodeChannelData(noiseSource);
     } catch (err) {
       errCb(err);
@@ -143,6 +143,7 @@ class AirParticleData {
 export class AirParticles {
   particleScale: number;
   particleColor: types.Real3;
+  isPlaying: boolean;
 
   private options: AirParticleOptions;
   private airParticleData: AirParticleData;
@@ -163,6 +164,11 @@ export class AirParticles {
     this.particleColor = [1, 1, 1];
     this.particleDirectionNormal = [0, 0, 1];
     this.isCreated = false;
+    this.isPlaying = true;
+  }
+
+  togglePlaying(): void {
+    this.isPlaying = !this.isPlaying;
   }
 
   setParticleDirection(direction: types.Real3): void {
@@ -180,6 +186,10 @@ export class AirParticles {
   }
 
   update(dt: number, playerAabb: math.Aabb): void {
+    if (!this.isPlaying) {
+      return;
+    }
+
     if (!this.isCreated) {
       console.warn('Air particles not yet created.');
       return;

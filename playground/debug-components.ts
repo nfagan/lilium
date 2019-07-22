@@ -1,11 +1,17 @@
 import * as wgl from '../src/gl';
 import { PlayerMovement, Player, GrassTile, 
-  GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, gameUtil, 
+  GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, 
   AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, 
-  WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions, WorldGridManipulator, GrassTextureManager } from '../src/game';
-import { Stopwatch, loadText, asyncTimeout, tryExtractErrorMessage, loadImage, loadFloat32Buffer, loadUint8Buffer } from '../src/util';
-import { PlayerDrawable, PlayerDrawableResources } from './player-drawable';
+  WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions, WorldGridManipulator, PlayerDrawable, 
+  PlayerDrawableResources, gameUtil } from '../src/game';
+import { Stopwatch, tryExtractErrorMessage, asyncTimeout, loadAudioBuffer } from '../src/util';
 import { mat4 } from 'gl-matrix';
+
+const IS_FULLSCREEN = false;
+
+type Sounds = {
+  piano: AudioBuffer
+}
 
 const enum GridManipulationState {
   Selecting,
@@ -72,6 +78,46 @@ const GAME: Game = {
   imageQualityManager: new ImageQualityManager(),
   scene: new wgl.Scene()
 };
+
+async function makeSounds(audioContext: AudioContext): Promise<Sounds> {
+  const piano = await asyncTimeout(() => loadAudioBuffer(audioContext, '/sound/piano_g.mp3'), 5e3);
+  return {
+    piano
+  }
+}
+
+async function makeSoundPlayer(audioContext: AudioContext): Promise<void> {
+  const sounds = await makeSounds(audioContext);
+  let semitoneIdx = 0;
+
+  const player = () => {
+    const jitter = 0.12;
+    const sign = Math.random() > 0.5 ? -1 : 1;
+    const semitones = [0, 3, 5, 7, 10, 7, 5, 3];
+    // const semitones = [12, 15, 15, 17];
+    // const semitoneIdx = Math.min(Math.floor(Math.random() * semitones.length), semitones.length-1);
+    const semitone = semitones[semitoneIdx];
+    const pitch = semitone + Math.random() * jitter * sign;
+
+    const src = audioContext.createBufferSource();
+    src.buffer = sounds.piano;
+    src.playbackRate.value = Math.pow(2, pitch/12);
+
+    src.connect(audioContext.destination);
+    src.start();
+
+    semitoneIdx++;
+    semitoneIdx %= semitones.length;
+  }
+
+  GAME.keyboard.addAnonymousListener(wgl.Keys.up, player);
+
+  document.body.addEventListener('touchstart', e => {
+    for (let i = 0; i < e.touches.length; i++) {
+      player();
+    }
+  });
+}
 
 function makeWorldGrid(renderContext: wgl.RenderContext): WorldGridComponent {
   const gridDim = 35;
@@ -166,12 +212,11 @@ function handleQuality(keyboard: wgl.Keyboard, qualityManager: ImageQualityManag
 
 function handleGridManipulation(game: Game, gl: WebGLRenderingContext, camera: wgl.ICamera, view: mat4, proj: mat4, aabb: wgl.math.Aabb): void {
   if (game.gridManipulationState === GridManipulationState.Selecting) {    
-    // const x = game.controller.rotationalInput.x();
-    // const y = game.controller.rotationalInput.y();
     const w = gl.canvas.clientWidth;
     const h = gl.canvas.clientHeight;
-    const left = gl.canvas.getBoundingClientRect().left;
-    const top = gl.canvas.getBoundingClientRect().top;
+    const boundRect = gl.canvas.getBoundingClientRect();
+    const left = boundRect.left;
+    const top = boundRect.top;
 
     const x = game.controller.rotationalInput.x() - left;
     const y = game.controller.rotationalInput.y() - top;
@@ -197,12 +242,6 @@ function handleGridManipulation(game: Game, gl: WebGLRenderingContext, camera: w
 }
 
 function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audioContext: AudioContext, camera: wgl.FollowCamera, game: Game) {
-  //  1) Enter selection mode. 
-  //  2) Hover cursor to preview selected cell.
-  //  3) Press on cell to activate it.
-  //  4) Drag on cell to extrude to create a new cell.
-  //  5) Exit selection mode.
-
   const frameTimer = game.frameTimer;
   const dt = Math.max(frameTimer.elapsedSecs(), 1/60);
   const playerAabb = game.player.aabb;
@@ -252,33 +291,44 @@ function fatalError(cause: string): FatalError {
 }
 
 function makeCanvasContainer(): HTMLElement {
-  // return document.body;
-  const wrapper = document.createElement('div');
-  wrapper.style.width = '100%';
-  wrapper.style.height = '100%';
-  wrapper.style.display = 'flex';
-  wrapper.style.alignItems = 'center';
-  wrapper.style.justifyContent = 'center';
+  let makeElement: () => HTMLElement;
 
-  const container = document.createElement('div');
-  container.style.maxWidth = '500px';
-  container.style.maxHeight = '500px';
-  container.style.width = '100%';
-  container.style.height = '100%';
+  if (IS_FULLSCREEN) {
+    makeElement = () => document.body;
+  } else {
+    makeElement = () => {
+      const wrapper = document.createElement('div');
+      wrapper.style.width = '100%';
+      wrapper.style.height = '100%';
+      wrapper.style.display = 'flex';
+      wrapper.style.alignItems = 'center';
+      wrapper.style.justifyContent = 'center';
 
+      const container = document.createElement('div');
+      container.style.maxWidth = '500px';
+      container.style.maxHeight = '500px';
+      container.style.width = '100%';
+      container.style.height = '100%';
+
+      document.body.appendChild(wrapper);
+      wrapper.appendChild(container);
+
+      return container;
+    }
+  }
+
+  const container = makeElement();
+  
   container.addEventListener('click', e => {
     if (GAME.gridManipulationState === GridManipulationState.NotManipulating) {
       GAME.gridManipulationState = GridManipulationState.Selecting;
     }
-  });
-
-  document.body.appendChild(wrapper);
-  wrapper.appendChild(container);
+  }); 
 
   return container;
 }
 
-export async function main() {
+export async function main(): Promise<void> {
   const canvasContainer = makeCanvasContainer();
 
   const glResult = wgl.debug.createCanvasAndContext(canvasContainer);
@@ -298,6 +348,8 @@ export async function main() {
     fatalError('Failed to initialize audio context: ' + tryExtractErrorMessage(err));
     return;
   }
+
+  await makeSoundPlayer(audioContext);
 
   const controller = makeController(GAME.keyboard);
   const renderer = new wgl.Renderer(renderContext);
@@ -372,6 +424,12 @@ export async function main() {
   // GAME.scene.addModel(grassCube);
   GAME.scene.addModel(skyDome);
   GAME.scene.addLight(sun);
+
+  GAME.keyboard.addAnonymousListener(wgl.Keys.down, () => {
+    GAME.airParticleComponent.togglePlaying();
+    GAME.grassComponent.togglePlaying();
+    GAME.playerDrawable.togglePlaying();
+  });
 
   function renderLoop() {
     gameLoop(renderer, renderContext, audioContext, camera, GAME);

@@ -1,3 +1,5 @@
+import * as uuid from 'uuid/v4';
+
 export const Keys = {
   w: 87,
   a: 65,
@@ -6,6 +8,8 @@ export const Keys = {
   q: 81,
   z: 90,
   k: 75,
+  n: 78,
+  u: 85,
   space: 32,
   leftShift: 16,
   left: 37,
@@ -42,12 +46,20 @@ export class Keyboard {
     this.keyState[key] = false;
   }
 
-  addListener(forKey: number, name: string, cb: () => void) {
+  addAnonymousListener(forKey: number, cb: () => void): void {
+    this.addListener(forKey, uuid(), cb);
+  }
+
+  addAnonymousReleaseListener(forKey: number, cb: () => void): void {
+    this.addReleaseListener(forKey, uuid(), cb);
+  }
+
+  addListener(forKey: number, name: string, cb: () => void): void {
     const listeners = this.getPressListenersMap(forKey);
     listeners[name] = cb;
   }
 
-  addReleaseListener(forKey: number, name: string, cb: () => void) {
+  addReleaseListener(forKey: number, name: string, cb: () => void): void {
     const listeners = this.getReleaseListenersMap(forKey);
     listeners[name] = cb;
   }

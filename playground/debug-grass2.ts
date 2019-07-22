@@ -1,6 +1,6 @@
 import { debug, Keyboard, Keys, Program, FollowCamera, Vao, Vbo, Ebo, 
   BufferDescriptor, types, math, parse } from '../src/gl';
-import { Result, loadText, loadImage, PrimitiveTypedArray, loadAudioBuffer } from '../src/util';
+import { Result, loadText, loadImage, PrimitiveTypedArray, loadAudioBufferSourceNode } from '../src/util';
 import { vec3, mat4, glMatrix } from 'gl-matrix';
 import * as simpleSources from './shaders/debug-simple';
 import * as grassSources from './shaders/debug-grass2';
@@ -379,7 +379,7 @@ async function loadGrassImage(): Promise<HTMLImageElement> {
 }
 
 function loadWindSound(audioContext: AudioContext): Promise<AudioBufferSourceNode> {
-  return loadAudioBuffer(audioContext, '/sound/lf_noise_short.m4a');
+  return loadAudioBufferSourceNode(audioContext, '/sound/lf_noise_short.m4a');
 }
 
 async function render(gl: WebGLRenderingContext, audioContext: AudioContext) {
