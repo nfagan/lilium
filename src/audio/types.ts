@@ -35,4 +35,6 @@ export function makeNote(semitone: number, durationSecs: number = 0): Note {
   return {semitone, durationSecs};
 }
 
-export type NoteOnFunction = (audioContext: AudioContext, note: Note, startTime: number, noteIndex: number, numNotes: number, sequenceRelativeTime: number) => void;
+export type NoteCancelFunction = () => void;
+export type NoteOnFunction = (audioContext: AudioContext, note: Note, startTime: number, noteIndex: number, 
+  numNotes: number, sequenceRelativeTime: number) => NoteCancelFunction;

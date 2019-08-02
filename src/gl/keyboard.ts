@@ -5,6 +5,8 @@ export const Keys = {
   a: 65,
   s: 83,
   d: 68,
+  c: 67,
+  j: 74,
   q: 81,
   z: 90,
   k: 75,
