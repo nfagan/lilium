@@ -445,7 +445,7 @@ export class Sequence {
       for (let j = 0; j < measure.notes.length; j++) {
         const noteTime = measure.notes[j].relativeStartTime + i;
 
-        if (index < into.length-1) {
+        if (index < into.length) {
           into[index] = noteTime;
         } else {
           into.push(noteTime)

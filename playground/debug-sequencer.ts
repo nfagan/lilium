@@ -156,6 +156,8 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
 }
 
 export async function main(): Promise<void> {
+  //  Delete -- clear upcoming
+
   debug.maximizeDocumentBody();
 
   let beganLooping = false;
@@ -197,10 +199,15 @@ export async function main(): Promise<void> {
   keyboard.addAnonymousListener(Keys.n, () => sequence.addMeasure());
   keyboard.addAnonymousListener(Keys.d, () => {
     const measIndex = sequence.currentMeasureIndex();
+    const numMeasures = sequence.numMeasures();
+    const numToCancel = numMeasures - measIndex;
     sequence.removeMeasure(measIndex);
-    scheduler.cancelIfMatchingSequenceIdAndMeasure(sequence.id, measIndex);
+
+    for (let i = 0; i < numToCancel; i++) {
+      scheduler.cancelIfMatchingSequenceIdAndMeasure(sequence.id, measIndex+i);
+    }
   });
-  
+
   keyboard.addAnonymousListener(Keys.c, () => {
     const measIndex = sequence.currentMeasureIndex();
     sequence.clearMeasure(measIndex);
