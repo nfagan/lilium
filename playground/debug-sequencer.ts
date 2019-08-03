@@ -73,7 +73,7 @@ function pentatonic(audioContext: AudioContext, sounds: Sounds): () => void {
 }
 
 function noteOnAudioBuffer(buffer: AudioBuffer): audioTypes.NoteOnFunction {
-  return (audioContext, note, startTime) => playAudioBuffer(audioContext, audioContext.destination, buffer, note, startTime);
+  return (audioContext, note, startTime, seqTime) => playAudioBuffer(audioContext, audioContext.destination, buffer, note, startTime);
 }
 
 function playAudioBuffer(audioContext: AudioContext, destination: AudioDestinationNode, buffer: AudioBuffer, note: audioTypes.Note, when: number = 0): NoteCancelFunction {

@@ -288,11 +288,8 @@ export class Scheduler {
     }
 
     sequence.triggerBeforeScheduleTasks();
-
     sequence.startTime = nextStartTime;
 
-    const numNotes = sequence.countNotes();
-    let noteIndex = 0;
     let measureOffset = 0;
 
     const cancelFunctions: Array<NoteCancelFunction> = [];
@@ -309,12 +306,10 @@ export class Scheduler {
         const sequenceRelativeTime = note.relativeStartTime + i;
 
         if (noteCondition(note, sequenceRelativeTime)) {
-          const cancelFunc = noteOnFunction(this.audioContext, note, startTime, noteIndex, numNotes, sequenceRelativeTime);
+          const cancelFunc = noteOnFunction(this.audioContext, note, startTime, sequenceRelativeTime);
 
           cancelFunctions.push(cancelFunc);
           sequenceRelativeStarts.push(sequenceRelativeTime);
-
-          noteIndex++;
         }
       }
 
@@ -333,7 +328,7 @@ export class Scheduler {
       this.loopingSequences[sequence.id] = {
         sequence,
         noteOnFunction
-      }
+      };
 
     } else if (this.hasLoopingSequence(sequence.id)) {
       this.loopingSequences[sequence.id] = undefined;
@@ -347,7 +342,7 @@ export class Scheduler {
 
 class Measure {
   readonly timeSignature: TimeSignature;
-  notes: Array<ScheduledNote>; //  semitones
+  notes: Array<ScheduledNote>;
 
   constructor(timeSignature: TimeSignature) {
     this.timeSignature = copyTimeSignature(timeSignature);
