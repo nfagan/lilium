@@ -1,4 +1,5 @@
 import { Note, NoteOnFunction, Quantization, TimeSignature, copyTimeSignature, NoteCancelFunction } from './types';
+import { FrameTimerWithHistory } from '../util';
 
 type LoopingSequence = {
   sequence: Sequence,
@@ -25,47 +26,7 @@ function copyScheduledNote(note: ScheduledNote): ScheduledNote {
   return {...note};
 }
 
-class FrameTimer {
-  private lastTime: number;
-  private iter: number;
-  private minUpdatesToBegin: number;
-  private numUpdates: number;
-  private sampleSize: number;
-  private deltas: Array<number>;
-
-  constructor(minUpdatesToBegin: number, sampleSize: number) {
-    this.lastTime = NaN;
-    this.iter = 0;
-    this.minUpdatesToBegin = minUpdatesToBegin;
-    this.numUpdates = 0;
-    this.sampleSize = sampleSize;
-    this.deltas = [];
-  }
-
-  meanDelta(): number {
-    let sum = 0;
-
-    for (let i = 0; i < this.deltas.length; i++) {
-      sum += this.deltas[i];
-    }
-
-    return sum / this.deltas.length;
-  }
-
-  update(currentTime: number): void {
-    const delta = currentTime - this.lastTime;
-    this.lastTime = currentTime;
-
-    if (this.numUpdates >= this.minUpdatesToBegin) {
-      this.deltas[this.iter++] = delta;
-      this.iter %= this.sampleSize;
-    }
-
-    this.numUpdates++;
-  }
-}
-
-function alwaysPlayNote(note: Note): boolean {
+function alwaysPlayNote(note: Note, t: number): boolean {
   return true;
 }
 
@@ -80,7 +41,7 @@ export class Scheduler {
   private loopingSequences: {[key: number]: LoopingSequence};
   private scheduledSequences: Array<ScheduledSequence>;
 
-  private frameTimer: FrameTimer;
+  private frameTimer: FrameTimerWithHistory;
 
   constructor(audioContext: AudioContext, timeSignature: TimeSignature, bpm: number, quantization: Quantization) {
     this.audioContext = audioContext;
@@ -90,7 +51,7 @@ export class Scheduler {
     this.quantization = quantization;
     this.loopingSequences = {};
     this.scheduledSequences = [];
-    this.frameTimer = new FrameTimer(20, 10);
+    this.frameTimer = new FrameTimerWithHistory(20, 10);
   }
 
   secsToRelativeTime(secs: number): number {
@@ -163,6 +124,8 @@ export class Scheduler {
   }
 
   private findScheduledSequenceWithId(id: number): number {
+    //  @Performance: Linear search
+
     for (let i = 0; i < this.scheduledSequences.length; i++) {
       if (this.scheduledSequences[i].sequence.id === id) {
         return i;
@@ -172,8 +135,12 @@ export class Scheduler {
     return -1;
   }
 
+  clearMeasureInSequence(sequence: Sequence, atIdx: number): void {
+    sequence.clearMeasure(atIdx);
+    this.cancelIfMatchingSequenceIdAndMeasure(sequence.id, atIdx);
+  }
+
   removeMeasureInSequence(sequence: Sequence, atIdx: number): void {
-    //  @Performance: Linear search here.
     const scheduledIdx = this.findScheduledSequenceWithId(sequence.id);
     const origNumMeasures = sequence.numMeasures();
     const fracTime = sequence.relativeCurrentTime();
@@ -194,8 +161,6 @@ export class Scheduler {
     let noteOnFunction: NoteOnFunction = null;
 
     if (scheduledIdx !== -1) {
-      // console.log('scheduled', this.scheduledSequences.length);
-
       const scheduledSequence = this.scheduledSequences[scheduledIdx];
       this.scheduledSequences.splice(scheduledIdx, 1);
 
@@ -203,8 +168,6 @@ export class Scheduler {
       noteOnFunction = scheduledSequence.noteOnFunction;
 
     } else if (this.hasLoopingSequence(sequence.id)) {
-      // console.log('looped', this.scheduledSequences.length);
-
       const loopingSequence = this.loopingSequences[sequence.id];
 
       sequenceToReschedule = loopingSequence.sequence;
@@ -319,15 +282,13 @@ export class Scheduler {
   }
 
   private scheduleSequenceWithNoteCondition(sequence: Sequence, noteOnFunction: NoteOnFunction, nextStartTime: number, noteCondition: (note: Note, t: number) => boolean): void {
-    const audioContext = this.audioContext;
-
     if (sequence.startTime > this.currentTime()) {
       //  Already scheduled.
       return;
     }
 
     sequence.triggerBeforeScheduleTasks();
-    // sequence.clearBeforeScheduleTasks();
+
     sequence.startTime = nextStartTime;
 
     const numNotes = sequence.countNotes();
@@ -348,7 +309,7 @@ export class Scheduler {
         const sequenceRelativeTime = note.relativeStartTime + i;
 
         if (noteCondition(note, sequenceRelativeTime)) {
-          const cancelFunc = noteOnFunction(audioContext, note, startTime, noteIndex, numNotes, sequenceRelativeTime);
+          const cancelFunc = noteOnFunction(this.audioContext, note, startTime, noteIndex, numNotes, sequenceRelativeTime);
 
           cancelFunctions.push(cancelFunc);
           sequenceRelativeStarts.push(sequenceRelativeTime);
@@ -577,6 +538,14 @@ export class Sequence {
     this.measures[atIdx].clear();
   }
 
+  clearMeasureAndCancel(atIdx: number): void {
+    this.scheduler.clearMeasureInSequence(this, atIdx);
+  }
+
+  removeMeasureAndCancel(atIdx: number): void {
+    this.scheduler.removeMeasureInSequence(this, atIdx);
+  }
+
   removeMeasure(atIdx: number): boolean {
     if (atIdx < 0 || atIdx >= this.numMeasures()) {
       return false;
@@ -792,22 +761,15 @@ type NoteOn = {
 export class SequenceNoteOnListener {
   private scheduler: Scheduler;
   private sequence: Sequence;
-  private pending: Array<NoteOn>;
   private note0: NoteOn;
-  private note1: NoteOn;
   private noteDistanceSecs: number;
-  private lastTime: number;
   private previousStartTime: number;
   private fractionalSequenceTime: number;
-  private readonly isNewMethod = true;
 
   constructor(scheduler: Scheduler, sequence: Sequence) {
     this.scheduler = scheduler;
     this.sequence = sequence;
     this.note0 = {startTime: 0, sequenceRelativeTime: -1};
-    this.note1 = {startTime: 0, sequenceRelativeTime: -1};
-    this.pending = [];
-    this.lastTime = scheduler.currentTime();
     this.previousStartTime = sequence.startTime;
     this.noteDistanceSecs = 0;
     this.fractionalSequenceTime = 0;
@@ -819,61 +781,15 @@ export class SequenceNoteOnListener {
     });
   }
 
-  private noteOnFunction(startTime: number, sequenceRelativeTime: number): void {
-    if (!this.isNewMethod) {
-      this.pending.push({startTime, sequenceRelativeTime});
-    }
-  }
-
   activeNote(): number {
     return this.note0.sequenceRelativeTime;
   }
 
-  makeNoteOnFunction(pass: NoteOnFunction): NoteOnFunction {
-    const self = this;
-    
-    return (context, note, startTime, noteInd, numNotes, seqRelativeTime) => {
-      self.noteOnFunction(startTime, seqRelativeTime);
-      const cancelFunc = pass(context, note, startTime, noteInd, numNotes, seqRelativeTime);
-
-      return () => {
-        self.pending = [];
-        cancelFunc();
-      }
-    }
-  }
-
-  private tSequenceOld(): number {
-    const frac = this.sequence.relativeCurrentTime() / this.sequence.numMeasures();
-
-    if (isNaN(frac)) {
-      return 0;
-    } else {
-      return frac;
-    }
-  }
-
   tSequence(): number {
-    return this.isNewMethod ? this.tSequenceNew() : this.tSequenceOld();
-  }
-
-  tNextNote(): number {
-    return this.isNewMethod ? this.tNextNoteNew() : this.tNextNoteOld();
-  }
-
-  update(): void {
-    if (this.isNewMethod) {
-      this.updateNew();
-    } else {
-      this.updateOld();
-    }
-  }
-
-  private tSequenceNew(): number {
     return this.fractionalSequenceTime;
   }
 
-  private tNextNoteNew(): number {
+  tNextNote(): number {
     const ct = this.scheduler.currentTime();
     const note0 = this.note0.startTime;
     const elapsed = (ct - note0) / this.noteDistanceSecs;
@@ -881,7 +797,7 @@ export class SequenceNoteOnListener {
     return isNaN(elapsed) ? 0 : Math.max(0, Math.min(elapsed, 1));
   }
 
-  private updateNew(): void {
+  update(): void {
     const sequence = this.sequence;
     const ct = this.scheduler.currentTime();
 
@@ -899,10 +815,8 @@ export class SequenceNoteOnListener {
     const note1 = sequence.nextRelativeNoteTime(note0);
     const noteDist = sequence.relativeNoteDistance(note0, note1);
 
-    let note0Start: number;
     let note0Time = this.scheduler.relativeTimeToSecs(note0);
-
-    note0Start = startTime + note0Time;
+    let note0Start = startTime + note0Time;
 
     if (note0 > fracTime) {
       note0Start = startTime - (sequenceDuration - note0Time);
@@ -912,52 +826,5 @@ export class SequenceNoteOnListener {
     this.note0.startTime = note0Start;
     this.noteDistanceSecs = this.scheduler.relativeTimeToSecs(noteDist);
     this.fractionalSequenceTime = fracTime / sequence.numMeasures();
-  }
-
-  private tNextNoteOld(): number {
-    const dur = this.note1.startTime - this.note0.startTime;
-    let frac = (this.scheduler.currentTime() - this.note0.startTime) / dur;
-
-    if (isNaN(frac) || frac < 0) {
-      return 0;
-    } else if (frac > 1) {
-      return 1;
-    } else {
-      return frac;
-    }
-  }
-
-  private updateOld(): void {
-    const pend = this.pending;
-    const sequence = this.sequence;
-    const scheduler = this.scheduler;
-
-    const ct = this.scheduler.currentTime();
-    const dt = this.lastTime - ct;
-    this.lastTime = ct;
-
-    let note0 = this.note0;
-    let note1 = this.note1;
-    let offset = 0;
-    
-    for (let i = 0; i < pend.length; i++) {
-      if (ct + dt >= pend[i-offset].startTime) {
-        note0 = pend[i-offset];
-
-        const note0RelativeTime = note0.sequenceRelativeTime;
-        const note1RelativeTime = sequence.nextRelativeNoteTime(note0RelativeTime);
-        const relativeNoteDist = sequence.relativeNoteDistance(note0RelativeTime, note1RelativeTime);
-        const note1StartTime = note0.startTime + scheduler.relativeTimeToSecs(relativeNoteDist);
-
-        note1.sequenceRelativeTime = note1RelativeTime;
-        note1.startTime = note1StartTime;
-
-        pend.splice(i-offset, 1);
-        offset++;
-      }
-    }
-
-    this.note0 = note0;
-    this.note1 = note1;
   }
 }

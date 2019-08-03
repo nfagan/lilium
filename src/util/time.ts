@@ -1,3 +1,43 @@
+export class FrameTimerWithHistory {
+  private lastTime: number;
+  private iter: number;
+  private minUpdatesToBegin: number;
+  private numUpdates: number;
+  private sampleSize: number;
+  private deltas: Array<number>;
+
+  constructor(minUpdatesToBegin: number, sampleSize: number) {
+    this.lastTime = NaN;
+    this.iter = 0;
+    this.minUpdatesToBegin = minUpdatesToBegin;
+    this.numUpdates = 0;
+    this.sampleSize = sampleSize;
+    this.deltas = [];
+  }
+
+  meanDelta(): number {
+    let sum = 0;
+
+    for (let i = 0; i < this.deltas.length; i++) {
+      sum += this.deltas[i];
+    }
+
+    return sum / this.deltas.length;
+  }
+
+  update(currentTime: number): void {
+    const delta = currentTime - this.lastTime;
+    this.lastTime = currentTime;
+
+    if (this.numUpdates >= this.minUpdatesToBegin) {
+      this.deltas[this.iter++] = delta;
+      this.iter %= this.sampleSize;
+    }
+
+    this.numUpdates++;
+  }
+}
+
 export class Stopwatch {
   private startTime: number;
 

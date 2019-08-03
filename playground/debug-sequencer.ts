@@ -84,10 +84,18 @@ function playAudioBuffer(audioContext: AudioContext, destination: AudioDestinati
   src.buffer = buffer;
   src.playbackRate.value = Math.pow(2, semitone/12);
 
+  let stopped = false;
+
   src.connect(destination);
   src.start(when);
+  src.onended = () => stopped = true;
 
-  return () => src.stop(0);
+  return () => {
+    if (!stopped) {
+      src.stop(0);
+      stopped = true;
+    }
+  }
 }
 
 function makeCanvas(appendTo: HTMLElement): HTMLCanvasElement {
@@ -119,23 +127,12 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
   const h = canvas.height;
 
   const activeNote = sequenceListener.activeNote();
-
   const t = sequenceListener.tNextNote();
-
   const numMeasures = sequence.numMeasures();
-  const activeMeasure = sequence.currentMeasureIndex();
 
   for (let i = 0; i < numMeasures; i++) {
     ctx.strokeStyle = 'black';
     ctx.strokeRect(i / numMeasures * canvas.width, 0, 1/numMeasures * canvas.width, h);
-
-    // if (i === activeMeasure) {
-    //   // let amt = smoothStep(metronomeListener.tNextNote()) * 20 + 127;
-    //   let amt = 127;
-
-    //   ctx.fillStyle = `rgb(${amt}, ${amt}, ${amt})`;
-    //   ctx.fillRect(i / numMeasures * canvas.width, 0, 1/numMeasures * canvas.width, h);
-    // }
   }
 
   const notes = new Array<number>(sequence.countNotes());
@@ -150,7 +147,7 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
   }
 
   const seqW = 10;
-  ctx.strokeStyle = 'black';
+  ctx.strokeStyle = 'red';
   const x0 = sequenceListener.tSequence() * canvas.width;
   ctx.strokeRect(x0, 0, seqW, h);
 }
@@ -193,19 +190,16 @@ export async function main(): Promise<void> {
   const sequenceListener = new SequenceNoteOnListener(scheduler, sequence);
   const metronomeListener = new SequenceNoteOnListener(scheduler, metronome);
 
-  const noteOnFunc = sequenceListener.makeNoteOnFunction(noteOnAudioBuffer(sounds.piano));
-  const metronomeNoteOnFunc = metronomeListener.makeNoteOnFunction(noteOnAudioBuffer(sounds.piano));
+  const noteOnFunc = noteOnAudioBuffer(sounds.piano);
+  const metronomeNoteOnFunc = noteOnAudioBuffer(sounds.piano);
 
   keyboard.addAnonymousListener(Keys.n, () => sequence.addMeasure());
   keyboard.addAnonymousListener(Keys.d, () => {
-    const measIndex = sequence.currentMeasureIndex();
-    scheduler.removeMeasureInSequence(sequence, measIndex);
+    sequence.removeMeasureAndCancel(sequence.currentMeasureIndex());
   });
 
   keyboard.addAnonymousListener(Keys.c, () => {
-    const measIndex = sequence.currentMeasureIndex();
-    sequence.clearMeasure(measIndex);
-    scheduler.cancelIfMatchingSequenceIdAndMeasure(sequence.id, measIndex);
+    sequence.clearMeasureAndCancel(sequence.currentMeasureIndex());
   });
 
   const beginLoop = () => {
