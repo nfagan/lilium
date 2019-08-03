@@ -129,13 +129,13 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
     ctx.strokeStyle = 'black';
     ctx.strokeRect(i / numMeasures * canvas.width, 0, 1/numMeasures * canvas.width, h);
 
-    if (i === activeMeasure) {
-      // let amt = smoothStep(metronomeListener.tNextNote()) * 20 + 127;
-      let amt = 127;
+    // if (i === activeMeasure) {
+    //   // let amt = smoothStep(metronomeListener.tNextNote()) * 20 + 127;
+    //   let amt = 127;
 
-      ctx.fillStyle = `rgb(${amt}, ${amt}, ${amt})`;
-      ctx.fillRect(i / numMeasures * canvas.width, 0, 1/numMeasures * canvas.width, h);
-    }
+    //   ctx.fillStyle = `rgb(${amt}, ${amt}, ${amt})`;
+    //   ctx.fillRect(i / numMeasures * canvas.width, 0, 1/numMeasures * canvas.width, h);
+    // }
   }
 
   const notes = new Array<number>(sequence.countNotes());
@@ -145,7 +145,7 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
     const note = notes[i];
     const color = note === activeNote ? (1-t) * 255 : 0;
 
-    ctx.fillStyle = `rgb(${color}, ${color}, ${color})`;
+    ctx.fillStyle = `rgb(${color}, ${255}, ${255})`;
     ctx.fillRect(canvas.width * note / sequence.numMeasures(), 0, w, h);
   }
 
@@ -177,12 +177,12 @@ export async function main(): Promise<void> {
   const pentScale = pentatonicMaker();
 
   const metronome = scheduler.makeSequence();
-  metronome.addMeasures(2);
+  metronome.addMeasures(1);
   metronome.scheduleNoteOnset(0, audioTypes.makeNote(0));
   metronome.scheduleNoteOnset(0.25, audioTypes.makeNote(-12));
   metronome.scheduleNoteOnset(0.5, audioTypes.makeNote(0));
   metronome.scheduleNoteOnset(0.75, audioTypes.makeNote(10));
-  metronome.scheduleNoteOnset(1.5, audioTypes.makeNote(7));
+  // metronome.scheduleNoteOnset(1.5, audioTypes.makeNote(7));
 
   sequence.addMeasures(1);
   sequence.scheduleNoteOnset(0, audioTypes.makeNote(-12));
@@ -199,13 +199,7 @@ export async function main(): Promise<void> {
   keyboard.addAnonymousListener(Keys.n, () => sequence.addMeasure());
   keyboard.addAnonymousListener(Keys.d, () => {
     const measIndex = sequence.currentMeasureIndex();
-    const numMeasures = sequence.numMeasures();
-    const numToCancel = numMeasures - measIndex;
-    sequence.removeMeasure(measIndex);
-
-    for (let i = 0; i < numToCancel; i++) {
-      scheduler.cancelIfMatchingSequenceIdAndMeasure(sequence.id, measIndex+i);
-    }
+    scheduler.removeMeasureInSequence(sequence, measIndex);
   });
 
   keyboard.addAnonymousListener(Keys.c, () => {
