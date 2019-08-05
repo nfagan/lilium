@@ -15,10 +15,14 @@ function makeAudioContext(): AudioContext {
   return new (window.AudioContext || (<any>window).webkitAudioContext)();
 }
 
+function soundUrl(filename: string): string {
+  return '/sound/' + filename;
+}
+
 async function makeSounds(audioContext: AudioContext): Promise<Sounds> {
   return {
-    piano: await asyncTimeout(() => loadAudioBuffer(audioContext, '/sound/piano_g.mp3'), 5e3),
-    kick: await asyncTimeout(() => loadAudioBuffer(audioContext, '/sound/kick.wav'), 5e3)
+    piano: await asyncTimeout(() => loadAudioBuffer(audioContext, soundUrl('piano_g.mp3')), 5e3),
+    kick: await asyncTimeout(() => loadAudioBuffer(audioContext, soundUrl('kick.wav')), 5e3)
   };
 }
 
@@ -135,8 +139,8 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
     ctx.strokeRect(i / numMeasures * canvas.width, 0, 1/numMeasures * canvas.width, h);
   }
 
-  const notes = new Array<number>(sequence.countNotes());
-  sequence.relativeNoteTimes(notes);
+  const notes: Array<number> = [];
+  sequence.getRelativeNoteTimes(notes);
 
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
@@ -153,7 +157,11 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
 }
 
 export async function main(): Promise<void> {
-  //  Delete -- clear upcoming
+  //  Sequence stack
+  //  Effect stack -- Affects 4 adjacent sequences
+  //    Arpeggiator, Eq
+  //  Order stack -- At end of sequence, jump to another sequence
+  //    Random, adjacent, source / destination
 
   debug.maximizeDocumentBody();
 
@@ -226,7 +234,15 @@ export async function main(): Promise<void> {
     playAudioBuffer(audioContext, audioContext.destination, sounds.piano, note);
   }
 
-  document.body.addEventListener('mousedown', _ => player());
+  document.body.addEventListener('mousedown', e => {
+    if (!beganLooping) {
+      beginLoop();
+      beganLooping = true;
+    }
+
+    player();
+  });
+
   keyboard.addAnonymousListener(Keys.space, recorder);
 
   document.body.addEventListener('touchstart', e => {

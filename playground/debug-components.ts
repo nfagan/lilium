@@ -1,13 +1,13 @@
 import * as wgl from '../src/gl';
 import { PlayerMovement, Player, GrassTile, 
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, 
-  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, getDpr, FatalError, WorldGridDrawable, 
+  AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, ImageQuality, getDpr, FatalError, WorldGridDrawable, 
   WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions, WorldGridManipulator, PlayerDrawable, 
   PlayerDrawableResources, gameUtil } from '../src/game';
 import { Stopwatch, tryExtractErrorMessage, asyncTimeout, loadAudioBuffer } from '../src/util';
 import { mat4 } from 'gl-matrix';
 
-const IS_FULLSCREEN = false;
+const IS_FULLSCREEN = true;
 
 type Sounds = {
   piano: AudioBuffer
@@ -75,7 +75,7 @@ const GAME: Game = {
   },
   grassModelOptions: {numSegments: 3},
   grassTextureOptions: {textureSize: 256},
-  imageQualityManager: new ImageQualityManager(),
+  imageQualityManager: new ImageQualityManager(ImageQuality.Medium),
   scene: new wgl.Scene()
 };
 

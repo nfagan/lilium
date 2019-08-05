@@ -10,8 +10,8 @@ export class ImageQualityManager {
   private quality: ImageQuality;
   private isDirty: boolean;
 
-  constructor() {
-    this.quality = ImageQuality.Low;
+  constructor(initialQuality: ImageQuality) {
+    this.quality = initialQuality;
     this.isDirty = true;
   }
 
