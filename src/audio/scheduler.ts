@@ -1,13 +1,9 @@
 import { Note, NoteOnFunction, Quantization, TimeSignature, copyTimeSignature, NoteCancelFunction } from './types';
 import { FrameTimerWithHistory } from '../util';
 
-type LoopingSequence = {
-  sequence: Sequence,
-  noteOnFunction: NoteOnFunction,
-}
-
 type ScheduledSequence = {
   sequence: Sequence,
+  startTimes: Array<number>,
   sequenceRelativeStarts: Array<number>,
   noteOnFunction: NoteOnFunction,
   cancelFunctions: Array<NoteCancelFunction>,
@@ -39,11 +35,9 @@ export class Scheduler {
   private startTime: number;
   private quantization: Quantization;
 
-  private loopingSequences: {[key: number]: LoopingSequence};
   private scheduledSequences: Array<ScheduledSequence>;
 
   private frameTimer: FrameTimerWithHistory;
-  private readonly isNewUpdateMethod = true;
 
   constructor(audioContext: AudioContext, timeSignature: TimeSignature, bpm: number, quantization: Quantization) {
     this.audioContext = audioContext;
@@ -51,10 +45,8 @@ export class Scheduler {
     this.timeSignature = copyTimeSignature(timeSignature);
     this.bpm = bpm;
     this.quantization = quantization;
-    this.loopingSequences = {};
     this.scheduledSequences = [];
     this.frameTimer = new FrameTimerWithHistory(20, 10);
-    console.log('Is new update? ', this.isNewUpdateMethod);
   }
 
   secsToRelativeTime(secs: number): number {
@@ -74,14 +66,6 @@ export class Scheduler {
 
     this.bpm = bpm;
     this.startTime = this.currentTime();
-
-    for (let seqId in this.loopingSequences) {
-      const loopingSequence = this.loopingSequences[seqId];
-
-      if (loopingSequence !== undefined) {
-        this.scheduleLoopingSequence(loopingSequence);
-      }
-    }
   }
 
   subsectionSequence(sequence: Sequence, noteOnFunc: NoteOnFunction, offset: number, numMeasures: number): void {
@@ -98,8 +82,9 @@ export class Scheduler {
     
     const nearestQuantumTime = this.nextQuantumTime() - this.quantumDuration();
     const sequenceRelativeTime = newMeasureIdx + fracTime;
+    const currentTime = this.currentTime();
 
-    this.cancelIf(seq => seq.id === sequence.id, note => note >= sequenceRelativeTime);
+    this.cancelIf(seq => seq.id === sequence.id, (_, startTime) => startTime >= currentTime);
     this.removeIfMatchingSequence(sequence.id);
 
     this.scheduleSequenceWithNoteCondition(sequence, noteOnFunc, nearestQuantumTime, (note, t) => {
@@ -123,8 +108,9 @@ export class Scheduler {
     
     const startTime = this.nextQuantumTime() - this.quantumDuration() * (measureIndex + 1);
     const sequenceRelativeTime = measureIndex + fracTime;
+    const currentTime = this.currentTime();
 
-    this.cancelIf(seq => seq.id === sequence.id, note => note >= sequenceRelativeTime);
+    this.cancelIf(seq => seq.id === sequence.id, (_, startTime) => startTime >= currentTime);
     this.removeIfMatchingSequence(sequence.id);
 
     this.scheduleSequenceWithNoteCondition(sequence, noteOnFunc, startTime, (note, t) => {
@@ -132,37 +118,7 @@ export class Scheduler {
     });
   }
 
-  private updateLooping(currentTime: number): void {
-    for (let seqId in this.loopingSequences) {
-      const loopingSequence = this.loopingSequences[seqId];
-
-      if (loopingSequence === undefined) {
-        continue;
-      }
-
-      const sequence = loopingSequence.sequence;
-      const deadline = sequence.startTime + sequence.durationSecs() - this.loopLookahead();
-
-      if (currentTime >= deadline && sequence.loop) {
-        this.scheduleLoopingSequence(loopingSequence);
-      }
-    }
-  }
-
   private updateScheduled(currentTime: number): void {
-    let offset = 0;
-
-    for (let i = 0; i < this.scheduledSequences.length; i++) {
-      const seq = this.scheduledSequences[i-offset];
-
-      if (currentTime >= seq.finishTime) {
-        this.scheduledSequences.splice(i-offset, 1);
-        offset++;
-      }
-    }
-  }
-
-  private updateScheduledNew(currentTime: number): void {
     let offset = 0;
     const numSequences = this.scheduledSequences.length;
 
@@ -192,22 +148,6 @@ export class Scheduler {
         cancelFuncs[j]();
       }
     }
-
-    if (!this.isNewUpdateMethod) {
-      this.scheduledSequences = [];
-    }
-  }
-
-  private findScheduledSequenceWithId(id: number): number {
-    //  @Performance: Linear search
-
-    for (let i = 0; i < this.scheduledSequences.length; i++) {
-      if (this.scheduledSequences[i].sequence.id === id) {
-        return i;
-      }
-    }
-
-    return -1;
   }
 
   clearMeasureInSequence(sequence: Sequence, atIdx: number): void {
@@ -272,65 +212,8 @@ export class Scheduler {
     }
   }
 
-  private removeMeasureInSequenceOldUpdate(sequence: Sequence, atIdx: number): void {
-    const scheduledIdx = this.findScheduledSequenceWithId(sequence.id);
-    const origNumMeasures = sequence.numMeasures();
-    const fracTime = sequence.relativeCurrentTime();
-
-    const removeSuccess = sequence.removeMeasure(atIdx);
-    if (!removeSuccess) {
-      return;
-    }
-
-    const numToCancel = origNumMeasures - atIdx;
-
-    for (let i = 0; i < numToCancel; i++) {
-      this.cancelIfMatchingSequenceIdAndMeasure(sequence.id, atIdx+i);
-    }
-
-    const newNumMeasures = sequence.numMeasures();
-    let sequenceToReschedule: Sequence = null;
-    let noteOnFunction: NoteOnFunction = null;
-
-    if (scheduledIdx !== -1) {
-      const scheduledSequence = this.scheduledSequences[scheduledIdx];
-      this.scheduledSequences.splice(scheduledIdx, 1);
-
-      sequenceToReschedule = scheduledSequence.sequence;
-      noteOnFunction = scheduledSequence.noteOnFunction;
-
-    } else if (this.hasLoopingSequence(sequence.id)) {
-      const loopingSequence = this.loopingSequences[sequence.id];
-
-      sequenceToReschedule = loopingSequence.sequence;
-      noteOnFunction = loopingSequence.noteOnFunction;
-    }
-
-    if (sequenceToReschedule !== null && origNumMeasures > 1 && fracTime < origNumMeasures) {
-      let origMeasureIdx = Math.floor(fracTime);
-      const measFrac = fracTime - origMeasureIdx;
-      let newMeasureIdx = origMeasureIdx;
-
-      if (newMeasureIdx >= newNumMeasures) {
-        newMeasureIdx = 0;
-      }
-
-      const nearestQuantumTime = this.nextQuantumTime() - this.quantumDuration();
-      const startTime = nearestQuantumTime - sequence.measureDurationSecs() * newMeasureIdx;
-      const sequenceRelativeTime = measFrac + newMeasureIdx;
-      
-      this.scheduleSequenceWithNoteCondition(sequenceToReschedule, noteOnFunction, startTime, (note, t) => {
-        return t > sequenceRelativeTime;
-      });
-    }
-  }
-
   removeMeasureInSequence(sequence: Sequence, atIdx: number): void {
-    if (this.isNewUpdateMethod) {
-      this.removeMeasureInSequenceNewUpdate(sequence, atIdx);
-    } else {
-      this.removeMeasureInSequenceOldUpdate(sequence, atIdx);
-    }
+    this.removeMeasureInSequenceNewUpdate(sequence, atIdx);
   }
 
   removeIf(sequenceCondition: (seq: Sequence) => boolean): void {
@@ -363,20 +246,19 @@ export class Scheduler {
     this.cancelIf(seq => seq.id === id, start => Math.floor(start) === measure);
   }
 
-  cancelIf(sequenceCondition: (seq: Sequence) => boolean, noteCondition: (start: number) => boolean): void {
+  cancelIf(sequenceCondition: (seq: Sequence) => boolean, noteCondition: (relativeStart: number, startTime: number) => boolean): void {
     for (let i = 0; i < this.scheduledSequences.length; i++) {
       const sequence = this.scheduledSequences[i].sequence;
 
-      if (!sequenceCondition(sequence)) {
-        continue;
-      }
+      if (sequenceCondition(sequence)) {
+        const relativeStarts = this.scheduledSequences[i].sequenceRelativeStarts;
+        const startTimes = this.scheduledSequences[i].startTimes;
+        const cancelFuncs = this.scheduledSequences[i].cancelFunctions;
 
-      const starts = this.scheduledSequences[i].sequenceRelativeStarts;
-      const cancelFuncs = this.scheduledSequences[i].cancelFunctions;
-
-      for (let j = 0; j < starts.length; j++) {
-        if (noteCondition(starts[j])) {
-          cancelFuncs[j]();
+        for (let j = 0; j < relativeStarts.length; j++) {
+          if (noteCondition(relativeStarts[j], startTimes[j])) {
+            cancelFuncs[j]();
+          }
         }
       }
     }
@@ -386,12 +268,7 @@ export class Scheduler {
     const currentTime = this.currentTime();
     this.frameTimer.update(currentTime);
 
-    if (this.isNewUpdateMethod) {
-      this.updateScheduledNew(currentTime);
-    } else {
-      this.updateLooping(currentTime);
-      this.updateScheduled(currentTime);
-    }
+    this.updateScheduled(currentTime);
   }
 
   currentTime(): number {
@@ -400,10 +277,6 @@ export class Scheduler {
 
   initialTime(): number {
     return this.startTime;
-  }
-
-  private hasLoopingSequence(id: number): boolean {
-    return this.loopingSequences[id] !== undefined;
   }
 
   private quantumDuration(): number {
@@ -443,18 +316,10 @@ export class Scheduler {
     }
   }
 
-  private scheduleLoopingSequence(loopingSequence: LoopingSequence): void {
-    this.scheduleSequence(loopingSequence.sequence, loopingSequence.noteOnFunction);
-  }
-
   private scheduleSequenceWithNoteCondition(sequence: Sequence, noteOnFunction: NoteOnFunction, nextStartTime: number, 
     noteCondition: (note: Note, t: number) => boolean): void {
     if (sequence.startTime > this.currentTime()) {
-      if (this.isNewUpdateMethod) {
-        this.cancelIfMatchingSequence(sequence.id);
-      } else {
-        return;
-      }
+      this.cancelIfMatchingSequence(sequence.id);
     }
 
     sequence.triggerBeforeScheduleTasks();
@@ -464,6 +329,7 @@ export class Scheduler {
 
     const cancelFunctions: Array<NoteCancelFunction> = [];
     const sequenceRelativeStarts: Array<number> = [];
+    const startTimesSecs: Array<number> = [];
 
     const measures = sequence.getMeasures();
     const measureOffset = sequence.getMeasureOffset();
@@ -484,6 +350,7 @@ export class Scheduler {
 
           cancelFunctions.push(cancelFunc);
           sequenceRelativeStarts.push(sequenceRelativeTime);
+          startTimesSecs.push(startTime);
         }
       }
 
@@ -494,20 +361,11 @@ export class Scheduler {
       sequence,
       noteOnFunction,
       cancelFunctions,
+      startTimes: startTimesSecs,
       sequenceRelativeStarts,
       startTime: nextStartTime,
       finishTime: nextStartTime + sequence.durationSecs()
     });
-
-    if (sequence.loop && !this.isNewUpdateMethod) {
-      this.loopingSequences[sequence.id] = {
-        sequence,
-        noteOnFunction
-      };
-
-    } else if (this.hasLoopingSequence(sequence.id)) {
-      this.loopingSequences[sequence.id] = undefined;
-    }
   }
 
   scheduleSequence(sequence: Sequence, noteOnFunction: NoteOnFunction): void {

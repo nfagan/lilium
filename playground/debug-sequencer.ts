@@ -130,9 +130,13 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
   const w = 20;
   const h = canvas.height;
 
+  ctx.globalAlpha = 1;
+
   const activeNote = sequenceListener.activeNote();
   const t = sequenceListener.tNextNote();
   const numMeasures = sequence.actualNumMeasures();
+  const measOffset = sequence.getMeasureOffset();
+  const subsectionMeasures = sequence.numMeasures();
 
   for (let i = 0; i < numMeasures; i++) {
     ctx.strokeStyle = 'black';
@@ -144,14 +148,19 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
 
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
+    const measNote = Math.floor(note);
     const color = note === activeNote ? (1-t) * 255 : 0;
+    const isWithinSubsection = (measNote < measOffset || measNote >= subsectionMeasures + measOffset);
+    const subsectionAlpha = isWithinSubsection ? 0.25 : 1.0;
 
     ctx.fillStyle = `rgb(${color}, ${255}, ${255})`;
+    ctx.globalAlpha = subsectionAlpha;
     ctx.fillRect(canvas.width * note / sequence.actualNumMeasures(), 0, w, h);
+    ctx.globalAlpha = 1;
   }
 
   const seqW = 10;
-  ctx.strokeStyle = 'red';
+  ctx.strokeStyle = sequence.isSubsectioned() ? 'green' : 'red';
   const x0 = sequenceListener.tSequence() * canvas.width;
   ctx.strokeRect(x0, 0, seqW, h);
 }
