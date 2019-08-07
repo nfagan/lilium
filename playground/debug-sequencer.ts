@@ -132,7 +132,7 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
 
   const activeNote = sequenceListener.activeNote();
   const t = sequenceListener.tNextNote();
-  const numMeasures = sequence.numMeasures();
+  const numMeasures = sequence.actualNumMeasures();
 
   for (let i = 0; i < numMeasures; i++) {
     ctx.strokeStyle = 'black';
@@ -147,7 +147,7 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
     const color = note === activeNote ? (1-t) * 255 : 0;
 
     ctx.fillStyle = `rgb(${color}, ${255}, ${255})`;
-    ctx.fillRect(canvas.width * note / sequence.numMeasures(), 0, w, h);
+    ctx.fillRect(canvas.width * note / sequence.actualNumMeasures(), 0, w, h);
   }
 
   const seqW = 10;
@@ -162,6 +162,11 @@ export async function main(): Promise<void> {
   //    Arpeggiator, Eq
   //  Order stack -- At end of sequence, jump to another sequence
   //    Random, adjacent, source / destination
+  //
+  //  Subsection init -- 
+  //    cancel pending notes, reschedule remaining notes in subsection
+  //  Subsection cancel --
+  //    reschedule remaining notes in full sequence
 
   debug.maximizeDocumentBody();
 
@@ -208,6 +213,18 @@ export async function main(): Promise<void> {
 
   keyboard.addAnonymousListener(Keys.c, () => {
     sequence.clearMeasureAndCancel(sequence.currentMeasureIndex());
+  });
+
+  let hasSubsection = false;
+
+  keyboard.addAnonymousListener(Keys.s, () => {
+    if (hasSubsection) {
+      scheduler.clearSequenceSubsection(sequence, noteOnFunc);
+    } else {
+      scheduler.subsectionSequence(sequence, noteOnFunc, sequence.currentMeasureIndex(), 1);
+    }
+
+    hasSubsection = !hasSubsection;
   });
 
   const beginLoop = () => {

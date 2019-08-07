@@ -11,6 +11,7 @@ type ScheduledSequence = {
   sequenceRelativeStarts: Array<number>,
   noteOnFunction: NoteOnFunction,
   cancelFunctions: Array<NoteCancelFunction>,
+  startTime: number
   finishTime: number
 }
 
@@ -42,6 +43,7 @@ export class Scheduler {
   private scheduledSequences: Array<ScheduledSequence>;
 
   private frameTimer: FrameTimerWithHistory;
+  private readonly isNewUpdateMethod = true;
 
   constructor(audioContext: AudioContext, timeSignature: TimeSignature, bpm: number, quantization: Quantization) {
     this.audioContext = audioContext;
@@ -52,6 +54,7 @@ export class Scheduler {
     this.loopingSequences = {};
     this.scheduledSequences = [];
     this.frameTimer = new FrameTimerWithHistory(20, 10);
+    console.log('Is new update? ', this.isNewUpdateMethod);
   }
 
   secsToRelativeTime(secs: number): number {
@@ -79,6 +82,54 @@ export class Scheduler {
         this.scheduleLoopingSequence(loopingSequence);
       }
     }
+  }
+
+  subsectionSequence(sequence: Sequence, noteOnFunc: NoteOnFunction, offset: number, numMeasures: number): void {
+    const relativeCurrentTime = sequence.relativeCurrentTime();
+
+    if (!sequence.subsection(offset, numMeasures)) {
+      return;
+    }
+
+    const floorTime = Math.floor(relativeCurrentTime);
+    const fracTime = relativeCurrentTime - floorTime;
+    const numMeasuresAhead = floorTime - offset;
+    const newMeasureIdx = numMeasuresAhead % numMeasures + offset;
+    
+    const nearestQuantumTime = this.nextQuantumTime() - this.quantumDuration();
+    const sequenceRelativeTime = newMeasureIdx + fracTime;
+
+    this.cancelIf(seq => seq.id === sequence.id, note => note >= sequenceRelativeTime);
+    this.removeIfMatchingSequence(sequence.id);
+
+    this.scheduleSequenceWithNoteCondition(sequence, noteOnFunc, nearestQuantumTime, (note, t) => {
+      return t > sequenceRelativeTime;
+    });
+  }
+
+  clearSequenceSubsection(sequence: Sequence, noteOnFunc: NoteOnFunction): void {
+    if (!sequence.isSubsectioned()) {
+      return;
+    }
+
+    const relativeCurrentTime = sequence.relativeCurrentTime();
+    const measureOffset = sequence.getMeasureOffset();
+
+    sequence.clearSubsection();
+
+    const floorTime = Math.floor(relativeCurrentTime);
+    const fracTime = relativeCurrentTime - floorTime;
+    const measureIndex = (floorTime + measureOffset) % sequence.actualNumMeasures();
+    
+    const startTime = this.nextQuantumTime() - this.quantumDuration() * (measureIndex + 1);
+    const sequenceRelativeTime = measureIndex + fracTime;
+
+    this.cancelIf(seq => seq.id === sequence.id, note => note >= sequenceRelativeTime);
+    this.removeIfMatchingSequence(sequence.id);
+
+    this.scheduleSequenceWithNoteCondition(sequence, noteOnFunc, startTime, (note, t) => {
+      return t > sequenceRelativeTime;
+    });
   }
 
   private updateLooping(currentTime: number): void {
@@ -111,6 +162,28 @@ export class Scheduler {
     }
   }
 
+  private updateScheduledNew(currentTime: number): void {
+    let offset = 0;
+    const numSequences = this.scheduledSequences.length;
+
+    for (let i = 0; i < numSequences; i++) {
+      const seq = this.scheduledSequences[i-offset];
+      const sequence = seq.sequence;
+
+      const finishTime = seq.startTime + sequence.subsectionDurationSecs();
+      const loopCondition = sequence.loop && currentTime >= finishTime - this.loopLookahead();
+
+      if (currentTime >= finishTime || loopCondition) {
+        this.scheduledSequences.splice(i-offset, 1);
+        offset++;
+      }
+
+      if (loopCondition) {
+        this.scheduleSequence(sequence, seq.noteOnFunction);
+      }
+    }
+  }
+
   private cancelScheduled(): void {
     for (let i = 0; i < this.scheduledSequences.length; i++) {
       const cancelFuncs = this.scheduledSequences[i].cancelFunctions;
@@ -120,7 +193,9 @@ export class Scheduler {
       }
     }
 
-    this.scheduledSequences = [];
+    if (!this.isNewUpdateMethod) {
+      this.scheduledSequences = [];
+    }
   }
 
   private findScheduledSequenceWithId(id: number): number {
@@ -140,7 +215,64 @@ export class Scheduler {
     this.cancelIfMatchingSequenceIdAndMeasure(sequence.id, atIdx);
   }
 
-  removeMeasureInSequence(sequence: Sequence, atIdx: number): void {
+  private removeMeasureInSequenceNewUpdate(sequence: Sequence, atIdx: number): void {
+    if (sequence.isSubsectioned()) {
+      console.warn('Cannot delete while sequence is subsectioned.');
+      return;
+    }
+
+    const origNumMeasures = sequence.numMeasures();
+    const fracTime = sequence.relativeCurrentTime();
+
+    const removeSuccess = sequence.removeMeasure(atIdx);
+    if (!removeSuccess) {
+      return;
+    }
+
+    const numToCancel = origNumMeasures - atIdx;
+
+    for (let i = 0; i < numToCancel; i++) {
+      this.cancelIfMatchingSequenceIdAndMeasure(sequence.id, atIdx+i);
+    }
+
+    const newNumMeasures = sequence.numMeasures();
+    let sequenceToReschedule: Sequence = null;
+    let noteOnFunction: NoteOnFunction = null;
+
+    const numScheduled = this.scheduledSequences.length;
+    let scheduledOffset = 0;
+
+    for (let i = 0; i < numScheduled; i++) {
+      const scheduledSequence = this.scheduledSequences[i-scheduledOffset];
+
+      if (scheduledSequence.sequence.id === sequence.id) {
+        sequenceToReschedule = scheduledSequence.sequence;
+        noteOnFunction = scheduledSequence.noteOnFunction;
+        this.scheduledSequences.splice(i-scheduledOffset, 1);
+        scheduledOffset++;
+      }
+    }
+
+    if (sequenceToReschedule !== null) {
+      let origMeasureIdx = Math.floor(fracTime);
+      const measFrac = fracTime - origMeasureIdx;
+      let newMeasureIdx = origMeasureIdx;
+
+      if (newMeasureIdx >= newNumMeasures) {
+        newMeasureIdx = 0;
+      }
+
+      const nearestQuantumTime = this.nextQuantumTime() - this.quantumDuration();
+      const startTime = nearestQuantumTime - sequence.measureDurationSecs() * newMeasureIdx;
+      const sequenceRelativeTime = measFrac + newMeasureIdx;
+      
+      this.scheduleSequenceWithNoteCondition(sequenceToReschedule, noteOnFunction, startTime, (note, t) => {
+        return t > sequenceRelativeTime;
+      });
+    }
+  }
+
+  private removeMeasureInSequenceOldUpdate(sequence: Sequence, atIdx: number): void {
     const scheduledIdx = this.findScheduledSequenceWithId(sequence.id);
     const origNumMeasures = sequence.numMeasures();
     const fracTime = sequence.relativeCurrentTime();
@@ -190,11 +322,41 @@ export class Scheduler {
       this.scheduleSequenceWithNoteCondition(sequenceToReschedule, noteOnFunction, startTime, (note, t) => {
         return t > sequenceRelativeTime;
       });
-    }      
+    }
+  }
+
+  removeMeasureInSequence(sequence: Sequence, atIdx: number): void {
+    if (this.isNewUpdateMethod) {
+      this.removeMeasureInSequenceNewUpdate(sequence, atIdx);
+    } else {
+      this.removeMeasureInSequenceOldUpdate(sequence, atIdx);
+    }
+  }
+
+  removeIf(sequenceCondition: (seq: Sequence) => boolean): void {
+    const numSequences = this.scheduledSequences.length;
+    let offset = 0;
+
+    for (let i = 0; i < numSequences; i++) {
+      const sequence = this.scheduledSequences[i-offset].sequence;
+
+      if (sequenceCondition(sequence)) {
+        this.scheduledSequences.splice(i-offset, 1);
+        offset++;
+      }
+    }
+  }
+
+  removeIfMatchingSequence(id: number): void {
+    this.removeIf(seq => seq.id === id);
   }
 
   cancel(): void {
     this.cancelScheduled();
+  }
+
+  cancelIfMatchingSequence(id: number): void {
+    this.cancelIf(seq => seq.id === id, start => true);
   }
 
   cancelIfMatchingSequenceIdAndMeasure(id: number, measure: number): void {
@@ -224,8 +386,12 @@ export class Scheduler {
     const currentTime = this.currentTime();
     this.frameTimer.update(currentTime);
 
-    this.updateLooping(currentTime);
-    this.updateScheduled(currentTime);
+    if (this.isNewUpdateMethod) {
+      this.updateScheduledNew(currentTime);
+    } else {
+      this.updateLooping(currentTime);
+      this.updateScheduled(currentTime);
+    }
   }
 
   currentTime(): number {
@@ -281,29 +447,37 @@ export class Scheduler {
     this.scheduleSequence(loopingSequence.sequence, loopingSequence.noteOnFunction);
   }
 
-  private scheduleSequenceWithNoteCondition(sequence: Sequence, noteOnFunction: NoteOnFunction, nextStartTime: number, noteCondition: (note: Note, t: number) => boolean): void {
+  private scheduleSequenceWithNoteCondition(sequence: Sequence, noteOnFunction: NoteOnFunction, nextStartTime: number, 
+    noteCondition: (note: Note, t: number) => boolean): void {
     if (sequence.startTime > this.currentTime()) {
-      //  Already scheduled.
-      return;
+      if (this.isNewUpdateMethod) {
+        this.cancelIfMatchingSequence(sequence.id);
+      } else {
+        return;
+      }
     }
 
     sequence.triggerBeforeScheduleTasks();
     sequence.startTime = nextStartTime;
 
-    let measureOffset = 0;
+    let measureOffsetSecs = 0;
 
     const cancelFunctions: Array<NoteCancelFunction> = [];
     const sequenceRelativeStarts: Array<number> = [];
 
-    for (let i = 0; i < sequence.measures.length; i++) {
-      const measure = sequence.measures[i];
+    const measures = sequence.getMeasures();
+    const measureOffset = sequence.getMeasureOffset();
+    const numMeasures = sequence.numMeasures();
+
+    for (let i = 0; i < numMeasures; i++) {
+      const measure = measures[i + measureOffset];
       const measureDuration = measure.durationSecs(this.bpm);
 
       for (let j = 0; j < measure.notes.length; j++) {
         const note = measure.notes[j];
         const noteTime = note.relativeStartTime * measureDuration;
-        const startTime = noteTime + nextStartTime + measureOffset;
-        const sequenceRelativeTime = note.relativeStartTime + i;
+        const startTime = noteTime + nextStartTime + measureOffsetSecs;
+        const sequenceRelativeTime = note.relativeStartTime + i + measureOffset;
 
         if (noteCondition(note, sequenceRelativeTime)) {
           const cancelFunc = noteOnFunction(this.audioContext, note, startTime, sequenceRelativeTime);
@@ -313,7 +487,7 @@ export class Scheduler {
         }
       }
 
-      measureOffset += measureDuration;
+      measureOffsetSecs += measureDuration;
     }
 
     this.scheduledSequences.push({
@@ -321,10 +495,11 @@ export class Scheduler {
       noteOnFunction,
       cancelFunctions,
       sequenceRelativeStarts,
+      startTime: nextStartTime,
       finishTime: nextStartTime + sequence.durationSecs()
     });
 
-    if (sequence.loop) {
+    if (sequence.loop && !this.isNewUpdateMethod) {
       this.loopingSequences[sequence.id] = {
         sequence,
         noteOnFunction
@@ -429,13 +604,17 @@ export class Sequence {
 
   startTime: number;
 
-  readonly measures: Array<Measure>;
+  private readonly measures: Array<Measure>;
   readonly id: number;
 
   loop: boolean;
   allowRecord: boolean;
 
   onBeforeSchedule: Array<(seq: Sequence) => void>;
+
+  private measureOffset: number;
+  private reportedNumMeasures: number;
+  private hasSubsection: boolean;
 
   constructor(scheduler: Scheduler) {
     this.scheduler = scheduler;
@@ -445,6 +624,40 @@ export class Sequence {
     this.loop = false;
     this.allowRecord = true;
     this.onBeforeSchedule = [];
+    this.measureOffset = 0;
+    this.reportedNumMeasures = 0;
+    this.hasSubsection = false;
+  }
+
+  getMeasures(): Array<Measure> {
+    return this.measures;
+  }
+
+  getMeasureOffset(): number {
+    return this.measureOffset;
+  }
+
+  isSubsectioned(): boolean {
+    return this.hasSubsection;
+  }
+
+  clearSubsection(): void {
+    this.hasSubsection = false;
+    this.measureOffset = 0;
+    this.reportedNumMeasures = this.actualNumMeasures();
+  }
+
+  subsection(offset: number, numMeasures: number): boolean {
+    const actualNumMeasures = this.actualNumMeasures();
+
+    if (offset >= 0 && offset < actualNumMeasures && numMeasures >= 0 && numMeasures <= actualNumMeasures) {
+      this.measureOffset = offset;
+      this.reportedNumMeasures = numMeasures;
+      this.hasSubsection = true;
+      return true;
+    }
+
+    return false;
   }
 
   clearBeforeScheduleTasks(): void {
@@ -463,8 +676,9 @@ export class Sequence {
 
   countNotes(): number {
     let numNotes = 0;
+    const numMeasures = this.actualNumMeasures();
 
-    for (let i = 0; i < this.measures.length; i++) {
+    for (let i = 0; i < numMeasures; i++) {
       numNotes += this.measures[i].countNotes();
     }
 
@@ -493,8 +707,12 @@ export class Sequence {
     return index;
   }
 
-  numMeasures(): number {
+  actualNumMeasures(): number {
     return this.measures.length;
+  }
+
+  numMeasures(): number {
+    return this.hasSubsection ? this.reportedNumMeasures : this.actualNumMeasures();
   }
 
   elapsedTime(): number {
@@ -515,18 +733,16 @@ export class Sequence {
     }
   }
 
+  subsectionDurationSecs(): number {
+    return this.measureDurationSecs() * this.numMeasures();
+  }
+
   durationSecs(): number {
-    let duration = 0;
-
-    for (let i = 0; i < this.measures.length; i++) {
-      duration += this.measures[i].durationSecs(this.scheduler.getBpm());
-    }
-
-    return duration;
+    return this.measureDurationSecs() * this.actualNumMeasures();
   }
 
   clearMeasure(atIdx: number): void {
-    if (atIdx < 0 || atIdx >= this.numMeasures()) {
+    if (atIdx < 0 || atIdx >= this.actualNumMeasures()) {
       return;
     }
 
@@ -542,7 +758,7 @@ export class Sequence {
   }
 
   removeMeasure(atIdx: number): boolean {
-    if (atIdx < 0 || atIdx >= this.numMeasures()) {
+    if (atIdx < 0 || atIdx >= this.actualNumMeasures()) {
       return false;
     }
 
@@ -560,22 +776,12 @@ export class Sequence {
     }
   }
 
-  private measureIndex(a: number): number {
-    return Math.floor(a) % this.numMeasures();
-  }
-
-  private fraction(a: number): number {
-    return a - Math.floor(a);
-  }
-
   relativeTimeToSecs(relTime: number): number {
     return this.scheduler.relativeTimeToSecs(relTime);
   }
 
   relativeCurrentTime(): number {
-    const numMeasures = this.numMeasures();
-
-    if (numMeasures === 0) {
+    if (this.actualNumMeasures() === 0) {
       return -1;
     }
 
@@ -586,10 +792,16 @@ export class Sequence {
     return this.relativeNoteDistance(t, this.nextRelativeNoteTime(t));
   }
 
-  relativeNoteDistance(a: number, b: number): number {
-    const numMeasures = this.numMeasures();
+  private measureIndex(a: number): number {
+    return Math.floor(a) % this.actualNumMeasures();
+  }
 
-    if (numMeasures === 0 || a < 0 || b < 0) {
+  private fraction(a: number): number {
+    return a - Math.floor(a);
+  }
+
+  relativeNoteDistance(a: number, b: number): number {
+    if (this.actualNumMeasures() === 0 || a < 0 || b < 0) {
       return -1;
     }
 
@@ -603,16 +815,19 @@ export class Sequence {
       return indB - indA + fracB - fracA;
     } else {
       //  e.g., 1.25 0.75, 3 meaures -> 1.75 + 0.75
-      return numMeasures - (indA + fracA) + fracB + indB;
+      return this.numMeasures() - (indA + fracA - this.measureOffset) + (fracB + indB - this.measureOffset);
     }
   }
 
   firstRelativeNoteTime(): number {
-    for (let i = 0; i < this.measures.length; i++) {
-      const relTime = this.measures[i].firstRelativeNoteTime();
+    const numMeasures = this.numMeasures();
+    const measureOffset = this.measureOffset;
+
+    for (let i = 0; i < numMeasures; i++) {
+      const relTime = this.measures[i+measureOffset].firstRelativeNoteTime();
 
       if (relTime !== -1) {
-        return relTime + i;
+        return relTime + i + measureOffset;
       }
     }
 
@@ -628,16 +843,21 @@ export class Sequence {
     
     const measureFloor = Math.floor(t);
     const measureFrac = t - measureFloor;
-    const originalMeasureIndex = measureFloor % numMeasures;
+    const actualNumMeasures = this.actualNumMeasures();
+    const originalMeasureIndex = measureFloor % actualNumMeasures;
 
     let iters = 0;
     let measIndex = originalMeasureIndex;
 
+    const measureOffset = this.measureOffset;
+    const upperLimit = numMeasures + measureOffset;
+    const lowerBound = numMeasures - 1 + measureOffset;
+
     while (iters <= numMeasures) {
-      if (measIndex < 0) {
-        measIndex = numMeasures - 1;
-      } else if (measIndex >= numMeasures) {
-        measIndex = 0;
+      if (measIndex < measureOffset) {
+        measIndex = lowerBound;
+      } else if (measIndex >= upperLimit) {
+        measIndex = measureOffset;
       }
 
       const meas = this.measures[measIndex];
@@ -669,7 +889,7 @@ export class Sequence {
   }
 
   scheduleNoteOnset(relativeTime: number, note: Note): void {
-    const numMeasures = this.numMeasures();
+    const numMeasures = this.actualNumMeasures();
 
     if (numMeasures === 0) {
       return;
@@ -689,11 +909,11 @@ export class Sequence {
       return -1;
     }
 
-    const measureDuration = this.measures[0].durationSecs(this.scheduler.getBpm());
+    const measureDuration = this.measureDurationSecs();
     const fracMeasure = this.elapsedTime() / measureDuration;
     const floorMeasure = Math.floor(fracMeasure);
     
-    return floorMeasure % numMeasures;
+    return floorMeasure % numMeasures + this.measureOffset;
   }
 
   markNoteOnset(note: Note): void {
@@ -710,13 +930,20 @@ export class Sequence {
       return;
     }
 
-    const measureDuration = this.measures[0].durationSecs(this.scheduler.getBpm());
+    const measureDuration = this.measureDurationSecs();
     const fracMeasure = elapsedTime / measureDuration;
     const floorMeasure = Math.floor(fracMeasure);
-    const currMeasure = floorMeasure % numMeasures;
+    const currMeasure = floorMeasure % numMeasures + this.measureOffset;
     const relativeTime = fracMeasure - floorMeasure;
 
     this.measures[currMeasure].addNote(relativeTime, note);
+  }
+
+  private copyCommonProps(b: Sequence): void {
+    b.loop = this.loop;
+    b.allowRecord = this.allowRecord;
+    b.measureOffset = this.measureOffset;
+    b.reportedNumMeasures = this.reportedNumMeasures;
   }
 
   shallowCopy(): Sequence {
@@ -726,9 +953,7 @@ export class Sequence {
       b.measures.push(this.measures[i]);
     }
 
-    b.loop = this.loop;
-    b.allowRecord = this.allowRecord;
-
+    this.copyCommonProps(b);
     return b;
   }
 
@@ -739,9 +964,7 @@ export class Sequence {
       b.measures.push(this.measures[i].copy());
     }
 
-    b.loop = this.loop;
-    b.allowRecord = this.allowRecord;
-
+    this.copyCommonProps(b);
     return b;
   }
 
@@ -795,20 +1018,21 @@ export class SequenceNoteOnListener {
     const ct = this.scheduler.currentTime();
 
     const measureDuration = sequence.measureDurationSecs();
-    const sequenceDuration = sequence.durationSecs();
+    const sequenceDuration = sequence.subsectionDurationSecs();
 
     if (measureDuration === 0) {
       return;
     }
 
+    const measureOffset = sequence.getMeasureOffset();
     const startTime = ct >= sequence.startTime ? sequence.startTime : this.previousSequenceStartTime;
 
-    const fracTime = (ct - startTime) / measureDuration;
+    const fracTime = (ct - startTime) / measureDuration + measureOffset;
     const note0 = sequence.previousRelativeNoteTime(fracTime, true);
     const note1 = sequence.nextRelativeNoteTime(note0);
     const noteDist = scheduler.relativeTimeToSecs(sequence.relativeNoteDistance(note0, note1));
 
-    let note0Time = this.scheduler.relativeTimeToSecs(note0);
+    let note0Time = this.scheduler.relativeTimeToSecs(note0) - measureOffset * measureDuration;
     let note0Start = startTime + note0Time;
 
     if (note0 > fracTime) {
@@ -818,6 +1042,6 @@ export class SequenceNoteOnListener {
     this.noteStartTimeSequenceRelative = note0;
     this.noteStartTimeSecs = note0Start;
     this.noteDistanceSecs = noteDist;
-    this.fractionalSequenceTime = Math.max(0, Math.min(fracTime / sequence.numMeasures(), 1));
+    this.fractionalSequenceTime = Math.max(0, Math.min(fracTime / sequence.actualNumMeasures(), 1));
   }
 }

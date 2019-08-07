@@ -7,7 +7,7 @@ import { PlayerMovement, Player, GrassTile,
 import { Stopwatch, tryExtractErrorMessage, asyncTimeout, loadAudioBuffer } from '../src/util';
 import { mat4 } from 'gl-matrix';
 
-const IS_FULLSCREEN = true;
+const IS_FULLSCREEN = false;
 
 type Sounds = {
   piano: AudioBuffer

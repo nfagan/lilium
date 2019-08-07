@@ -178,9 +178,7 @@ export class WorldGridDrawable {
     shaderBuilder.fragColor.applyComponent(fragSchema, mat, fragOutput);
 
     const fragSource = shaderBuilder.common.shaderSchemaToString(fragSchema);
-    
     const prog = Program.fromSources(gl, gridSources.vertex, fragSource);
-
     mat.removeUnusedUniforms(prog);
 
     return prog;
