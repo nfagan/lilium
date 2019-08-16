@@ -1,12 +1,22 @@
 export const enum Quantization {
-  Whole,
-  Half,
-  Quarter
+  Whole
 }
 
 export function copyTimeSignature(ts: TimeSignature): TimeSignature {
   return new TimeSignature(ts.numerator, ts.denominator);
 }
+
+export interface IRoutable {
+  accept(input: AudioNode): void;
+  connect(to: AudioNode): void;
+  connectEffect(to: IRoutable): void;
+}
+
+export interface IEffect {
+  cancelScheduledValues(after: number): void;
+}
+
+export type ConfigureEffectsFunction<T> = (effects: T, audioContext: AudioContext, currentTime: number) => void;
 
 export class TimeSignature {
   readonly numerator: number;
@@ -29,6 +39,14 @@ export class TimeSignature {
 export type Note = {
   semitone: number,
   durationSecs: number
+}
+
+export type ScheduledNote = Note & {
+  relativeStartTime: number
+};
+
+export function copyNote(note: Note): Note {
+  return {...note};
 }
 
 export function makeNote(semitone: number, durationSecs: number = 0): Note {

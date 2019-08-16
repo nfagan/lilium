@@ -7,7 +7,7 @@ import { PlayerMovement, Player, GrassTile,
 import { Stopwatch, tryExtractErrorMessage, asyncTimeout, loadAudioBuffer } from '../src/util';
 import { mat4 } from 'gl-matrix';
 
-const IS_FULLSCREEN = false;
+const IS_FULLSCREEN = true;
 
 type Sounds = {
   piano: AudioBuffer
@@ -75,7 +75,7 @@ const GAME: Game = {
   },
   grassModelOptions: {numSegments: 3},
   grassTextureOptions: {textureSize: 256},
-  imageQualityManager: new ImageQualityManager(ImageQuality.Medium),
+  imageQualityManager: new ImageQualityManager(ImageQuality.Low),
   scene: new wgl.Scene()
 };
 
@@ -362,7 +362,7 @@ export async function main(): Promise<void> {
   camera.rotate(Math.PI/4, -Math.PI/7);
 
   const gridComponent = makeWorldGrid(renderContext);
-  const gridManipulator = new WorldGridManipulator(gridComponent);
+  const gridManipulator = new WorldGridManipulator(gridComponent, new wgl.MousePicker());
 
   const airParticleResources = new AirParticleResources(5e3, '/sound/wind-a-short2.aac');
   await airParticleResources.load(audioContext, err => console.log(err));

@@ -19,7 +19,7 @@ export class NumberSampler {
     this.sampleIndex = Math.floor(Math.random() * (this.numSamples-1));
   }
 
-  incrementSampleIndex(): void {
+  private incrementSampleIndex(): void {
     this.sampleIndex++;
     if (this.sampleIndex >= this.numSamples) {
       this.sampleIndex = 0;

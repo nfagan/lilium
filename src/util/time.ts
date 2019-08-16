@@ -38,7 +38,35 @@ export class FrameTimerWithHistory {
   }
 }
 
-export class Stopwatch {
+export interface IStopWatch {
+  elapsed(): number;
+  elapsedSecs(): number;
+  reset(): void;
+}
+
+export class AudioContextStopWatch implements IStopWatch {
+  private startTime: number;
+  private context: AudioContext;
+
+  constructor(context: AudioContext) {
+    this.startTime = context.currentTime;
+    this.context = context;
+  }
+
+  elapsed(): number {
+    return this.context.currentTime - this.startTime;
+  }
+
+  elapsedSecs(): number {
+    return this.elapsed();
+  }
+
+  reset(): void {
+    this.startTime = this.context.currentTime;
+  }
+}
+
+export class Stopwatch implements IStopWatch {
   private startTime: number;
 
   constructor() {

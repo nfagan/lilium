@@ -326,9 +326,9 @@ export class WorldGridManipulator {
   private selected: boolean;
   private added: boolean;
 
-  constructor(gridComponent: WorldGridComponent) {
+  constructor(gridComponent: WorldGridComponent, mousePicker: MousePicker) {
     this.gridComponent = gridComponent;
-    this.mousePicker = new MousePicker();
+    this.mousePicker = mousePicker;
     this.mouseRayDirection = [0, 0, 0];
     this.selectedCellIdx = [0, 0, 0];
     this.selected = false;

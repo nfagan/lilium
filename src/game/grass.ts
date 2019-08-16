@@ -135,7 +135,6 @@ export class GrassTextureManager {
     const numPixelsTexture = windTextureData.length / windTexture.numComponentsPerPixel();
 
     for (let i = 0; i < numPixelsTexture; i++) {
-      // const sample = windAudioSamplers[i].nextSample();
       const sample = windAudioSamplers[i].nthNextSample(sampleIncrement);
 
       const vx = (windVx + 1) * 0.5;
@@ -502,11 +501,15 @@ export class GrassResources {
     this.noiseUrl = noiseUrl;
     this.timeoutMs = timeoutMs;
   }
+
+  private extractBufferFromAudioNode(node: AudioBufferSourceNode): Float32Array {
+    return gameUtil.getBufferSourceNodeChannelData(node);
+  }
   
   async load(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
     try {
       const noiseNode = await asyncTimeout(() => loadAudioBufferSourceNode(audioContext, this.noiseUrl), this.timeoutMs);
-      this.noiseSource = gameUtil.getBufferSourceNodeChannelData(noiseNode);
+      this.noiseSource = this.extractBufferFromAudioNode(noiseNode);
     } catch (err) {
       errCb(err);
     }

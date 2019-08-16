@@ -8,6 +8,10 @@ export class Transform {
     this.matrix = mat4.create();
   }
 
+  identity(): void {
+    mat4.identity(this.matrix);
+  }
+
   translate(to: types.Real3): void {
     mat4.translate(this.matrix, this.matrix, to as any);
   }

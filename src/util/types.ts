@@ -17,3 +17,11 @@ export interface BasicErr {
 export function isBasicErr(err: any): err is BasicErr {
   return typeof err === 'object' && err.hasOwnProperty('message') && typeof err.message === 'string';
 }
+
+export function True(...args: any[]): boolean {
+  return true;
+}
+
+export function False(...args: any[]): boolean {
+  return false;
+}
