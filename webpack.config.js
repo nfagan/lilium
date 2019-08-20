@@ -6,5 +6,20 @@ module.exports = {
     filename: 'client.js',
     path: path.resolve(__dirname, 'dist')
   },
-  mode: 'development'
+  mode: 'development',
+  // module: {
+  //   rules: [
+  //     {
+  //       test: /fast-grass\.js$/,
+  //     },
+  //     {
+  //       test: /fast-grass\.wasm$/,
+  //       type: 'javascript/auto',
+  //       loader: 'file-loader',
+  //       options: {
+  //         publicPath: 'playground/wasm/'
+  //       }
+  //     }
+  //   ]
+  // }
 };

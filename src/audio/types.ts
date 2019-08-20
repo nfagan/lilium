@@ -9,11 +9,13 @@ export function copyTimeSignature(ts: TimeSignature): TimeSignature {
 export interface IRoutable {
   accept(input: AudioNode): void;
   connect(to: AudioNode): void;
-  connectEffect(to: IRoutable): void;
+  connectRoutable(to: IRoutable): void;
 }
 
 export interface IEffect {
   cancelScheduledValues(after: number): void;
+  set(name: string, to: number, when: number): void;
+  ramp(name: string, to: number, when: number): void;
 }
 
 export type ConfigureEffectsFunction<T> = (effects: T, audioContext: AudioContext, currentTime: number) => void;

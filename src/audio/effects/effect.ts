@@ -11,7 +11,7 @@ export type PropertyMap = {
 }
 
 export abstract class Effect implements IRoutable, IEffect {
-  private context: AudioContext;
+  protected context: AudioContext;
   private params: Array<AudioParam>;
   private properties: PropertyMap;
 
@@ -58,7 +58,7 @@ export abstract class Effect implements IRoutable, IEffect {
     this.outputNode.connect(to);
   }
 
-  connectEffect(to: IRoutable): void {
+  connectRoutable(to: IRoutable): void {
     to.accept(this.outputNode);
   }
 

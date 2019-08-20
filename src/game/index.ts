@@ -1,7 +1,8 @@
 import * as gameUtil from './util';
 import * as input from './input';
+import * as wasm from './wasm';
 
-export { input, gameUtil };
+export { input, gameUtil, wasm };
 export { Player } from './player';
 export { MultiJumpHandler } from './multi-jump';
 export * from './grass';

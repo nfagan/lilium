@@ -82,6 +82,7 @@ export class Scheduler {
 
     this.bpm = bpm;
 
+    //  New quantum duration.
     const quantumDuration = this.quantumDuration();
     const newStartTime = currentTime - quantumDuration * prevQuantumRelative;
     this.startTime = newStartTime;
@@ -93,6 +94,9 @@ export class Scheduler {
     const playing = this.isPlaying();
     let offset = 0;
 
+    //  True if we're less than loopLookahead seconds to next quantum.
+    const withinLoopLookahead = currentQuantumTime + quantumDuration - currentTime < this.loopLookahead();
+
     for (let i = 0; i < numScheduled; i++) {
       const scheduled = this.scheduledSequences[i-offset];
       const sequence = scheduled.sequence;
@@ -103,22 +107,28 @@ export class Scheduler {
       }
       
       if (scheduledIds[sequence.id] === undefined) {
-        for (let j = 0; j < scheduled.cancelFunctions.length; j++) {
-          if (scheduled.startTimes[j] >= currentTime) {
-            scheduled.cancelFunctions[j]();
-          }
-        }
+        this.cancelAfterTimeInScheduledSequence(scheduled, currentTime);
 
+        //  Must reset bpm to get accurate measure index for this sequence.
         this.bpm = prevBpm;
-        const currentMeasureIndex = sequence.currentMeasureIndex() - sequence.getMeasureOffset();
+        const currentMeasureIndex = sequence.currentMeasureIndex();
+        const nextMeasureIndex = sequence.nextMeasureIndex(currentMeasureIndex);
+        const currentMeasureNumber = currentMeasureIndex - sequence.getMeasureOffset();
         const relativeCurrTime = sequence.relativeCurrentTime();
         this.bpm = bpm;
-        
-        const startTime = currentQuantumTime - quantumDuration * currentMeasureIndex;
+
+        let startTime = currentQuantumTime - quantumDuration * currentMeasureNumber;
+        let relativeTimeCriterion = relativeCurrTime;
+
+        //  Sequence wraps around; start at next measure, and play all notes.
+        if (withinLoopLookahead && nextMeasureIndex <= currentMeasureIndex) {
+          startTime = currentQuantumTime + quantumDuration;
+          relativeTimeCriterion = -Infinity;
+        }
         
         if (playing) {
           this.scheduleSequenceWithNoteCondition(sequence, startTime, (_, t, start) => {
-            return t > relativeCurrTime && start > currentTime;
+            return t > relativeTimeCriterion && start > currentTime;
           });
         }
 
@@ -161,7 +171,7 @@ export class Scheduler {
 
     if (playing) {
       this.scheduleSequenceWithNoteCondition(sequence, nearestQuantumTime, (note, t) => {
-        return t > scheduleThreshold;
+        return t >= scheduleThreshold;
       });
     }
   }
@@ -200,6 +210,7 @@ export class Scheduler {
     const numSequences = this.scheduledSequences.length;
     const loopLookahead = this.loopLookahead();
     const nextTime = this.nextQuantumTime();
+    const isPlaying = this.isPlaying();
 
     for (let i = 0; i < numSequences; i++) {
       const seq = this.scheduledSequences[i-offset];
@@ -214,7 +225,7 @@ export class Scheduler {
         offset++;
       }
 
-      if (loopCondition) {
+      if (loopCondition && isPlaying) {
         this.scheduleSequence(sequence, nextTime);
       }
     }
@@ -309,6 +320,14 @@ export class Scheduler {
     this.removeIf(seq => seq.id === id);
   }
 
+  private cancelAfterTimeInScheduledSequence(sequence: ScheduledSequence, after: number): void {
+    for (let i = 0; i < sequence.cancelFunctions.length; i++) {
+      if (sequence.startTimes[i] >= after) {
+        sequence.cancelFunctions[i]();
+      }
+    }
+  }
+
   private cancelAllInScheduledSequence(sequence: ScheduledSequence): void {
     for (let i = 0; i < sequence.cancelFunctions.length; i++) {
       sequence.cancelFunctions[i]();
@@ -393,7 +412,7 @@ export class Scheduler {
   }
 
   private scheduleSequenceWithNoteCondition(sequence: Sequence, nextStartTime: number, noteCondition: NoteConditionFunction): void {
-    if (sequence.startTime > this.currentTime()) {
+    if (sequence.startTime >= this.currentTime()) {
       //  Already scheduled -- clear and remove before rescheduling.
       this.cancelIfMatchingSequence(sequence.id);
       this.removeIfMatchingSequence(sequence.id);

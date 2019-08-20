@@ -3,7 +3,7 @@ import { PlayerMovement, Player, GrassTile,
   GrassModelOptions, GrassTextureOptions, GrassComponent, GrassResources, 
   AirParticles, AirParticleResources, PlayerMoveControls, Controller, input, ImageQualityManager, ImageQuality, getDpr, FatalError, WorldGridDrawable, 
   WorldGridComponent, SkyDomeDrawable, SkyDomeResources, AirParticleOptions, WorldGridManipulator, PlayerDrawable, 
-  PlayerDrawableResources, gameUtil } from '../src/game';
+  PlayerDrawableResources, gameUtil, wasm } from '../src/game';
 import { Stopwatch, IStopWatch, tryExtractErrorMessage, asyncTimeout, loadAudioBuffer } from '../src/util';
 import { mat4, vec3, mat3 } from 'gl-matrix';
 import * as audio from '../src/audio';
@@ -420,7 +420,7 @@ const GAME: Game = {
     offsetZ: 2
   },
   grassModelOptions: {numSegments: 3},
-  grassTextureOptions: {textureSize: 256},
+  grassTextureOptions: {textureSize: 256, tryUseWasm: true},
   imageQualityManager: new ImageQualityManager(ImageQuality.Low),
   scene: new wgl.Scene(),
   sequenceAggregate: null
@@ -694,7 +694,7 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   game.worldGrid.gridDrawable.updateNewCells();
   game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
 
-  game.grassComponent.update(dt, playerAabb);
+  game.grassComponent.updateWasm(dt, playerAabb);
   game.airParticleComponent.update(dt, playerAabb);
 
   const sunPos = game.sunPosition;
@@ -794,7 +794,7 @@ export async function main(): Promise<void> {
   const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource);
   airParticles.create(GAME.airParticleOptions);
 
-  const grassResources = new GrassResources(5e3, '/sound/lf_noise_short.m4a');
+  const grassResources = new GrassResources(5e3, '/sound/lf_noise_short.m4a', wasm.grass.makeMemory());
   await grassResources.load(audioContext, err => console.log(err));
 
   const grassComponent = new GrassComponent(renderContext, grassResources);

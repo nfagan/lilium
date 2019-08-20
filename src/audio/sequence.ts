@@ -40,28 +40,51 @@ export class Measure {
     this.notes.sort((a, b) => a.relativeStartTime - b.relativeStartTime);
   }
 
-  lastRelativeNoteTime(): number {
+  lastRelativeNoteTime(matchingSemitone?: number): number {
     if (this.notes.length === 0) {
       return -1;
     }
 
-    return this.notes[this.notes.length-1].relativeStartTime;
+    if (matchingSemitone === undefined) {
+      return this.notes[this.notes.length-1].relativeStartTime;
+
+    } else {
+      for (let i = this.notes.length-1; i >= 0; i--) {
+        if (this.notes[i].semitone === matchingSemitone) {
+          return this.notes[i].relativeStartTime;
+        }
+      }
+    }
+
+    return -1;
   }
 
-  firstRelativeNoteTime(): number {
+  firstRelativeNoteTime(matchingSemitone?: number): number {
     if (this.notes.length === 0) {
       return -1;
     }
 
-    return this.notes[0].relativeStartTime;
+    if (matchingSemitone === undefined) {
+      return this.notes[0].relativeStartTime;
+
+    } else {
+      for (let i = 0; i < this.notes.length; i++) {
+        if (this.notes[i].semitone === matchingSemitone) {
+          return this.notes[i].relativeStartTime;
+        }
+      }
+    }
+
+    return -1;
   }
 
-  previousRelativeNoteTime(before: number, allowEqual: boolean = false): number {
+  previousRelativeNoteTime(before: number, allowEqual: boolean = false, matchingSemitone?: number): number {
     for (let i = this.notes.length-1; i >= 0; i--) {
       const relStart = this.notes[i].relativeStartTime;
-      const crit = allowEqual ? relStart <= before : relStart < before;
+      const timeCrit = allowEqual ? relStart <= before : relStart < before;
+      const semitoneCrit = matchingSemitone === undefined ? true : this.notes[i].semitone === matchingSemitone;
 
-      if (crit) {
+      if (timeCrit && semitoneCrit) {
         return this.notes[i].relativeStartTime;
       }
     }
@@ -69,12 +92,13 @@ export class Measure {
     return -1;
   }
 
-  nextRelativeNoteTime(after: number, allowEqual: boolean = false): number {
+  nextRelativeNoteTime(after: number, allowEqual: boolean = false, matchingSemitone?: number): number {
     for (let i = 0; i < this.notes.length; i++) {
       const relStart = this.notes[i].relativeStartTime;
-      const crit = allowEqual ? relStart >= after : relStart > after;
+      const timeCrit = allowEqual ? relStart >= after : relStart > after;
+      const semitoneCrit = matchingSemitone === undefined ? true : this.notes[i].semitone === matchingSemitone;
 
-      if (crit) {
+      if (timeCrit && semitoneCrit) {
         return this.notes[i].relativeStartTime;
       }
     }
@@ -293,8 +317,8 @@ export class Sequence {
   boundRelativeTime(relTime: number): number {
     const measure = Math.floor(relTime);
     const frac = relTime - measure;
-    const outputMeasure = measure % this.numMeasures() + this.measureOffset;
-    return outputMeasure + frac;
+    const numMinusOffset = (measure - this.measureOffset) % this.numMeasures();
+    return numMinusOffset + this.measureOffset + frac;
   }
 
   relativeTimeToSecs(relTime: number): number {
@@ -363,7 +387,7 @@ export class Sequence {
     return -1;
   }
 
-  private relativeNoteTimeBeforeOrAfter(t: number, direction: number, allowEqual: boolean): number {
+  private relativeNoteTimeBeforeOrAfter(t: number, direction: number, allowEqual: boolean, matchingSemitone: number): number {
     const numMeasures = this.numMeasures();
 
     if (numMeasures === 0 || t < 0) {
@@ -393,9 +417,11 @@ export class Sequence {
       let next = -1;
       
       if (iters < numMeasures && measIndex === originalMeasureIndex) {
-        next = direction === 1 ? meas.nextRelativeNoteTime(measureFrac, allowEqual) : meas.previousRelativeNoteTime(measureFrac, allowEqual);
+        next = direction === 1 ? 
+          meas.nextRelativeNoteTime(measureFrac, allowEqual, matchingSemitone) : 
+          meas.previousRelativeNoteTime(measureFrac, allowEqual, matchingSemitone);
       } else {
-        next = direction === 1 ? meas.firstRelativeNoteTime() : meas.lastRelativeNoteTime();
+        next = direction === 1 ? meas.firstRelativeNoteTime(matchingSemitone) : meas.lastRelativeNoteTime(matchingSemitone);
       }
 
       if (next !== -1) {
@@ -409,12 +435,12 @@ export class Sequence {
     return -1;
   }
 
-  previousRelativeNoteTime(before: number, allowEqual: boolean = false): number {
-    return this.relativeNoteTimeBeforeOrAfter(before, -1, allowEqual);
+  previousRelativeNoteTime(before: number, allowEqual: boolean = false, matchingSemitone?: number): number {
+    return this.relativeNoteTimeBeforeOrAfter(before, -1, allowEqual, matchingSemitone);
   }
 
-  nextRelativeNoteTime(after: number, allowEqual: boolean = false): number {
-    return this.relativeNoteTimeBeforeOrAfter(after, 1, allowEqual);
+  nextRelativeNoteTime(after: number, allowEqual: boolean = false, matchingSemitone?: number): number {
+    return this.relativeNoteTimeBeforeOrAfter(after, 1, allowEqual, matchingSemitone);
   }
 
   scheduleNoteOnset(relativeTime: number, note: Note): void {
@@ -432,17 +458,12 @@ export class Sequence {
   }
 
   currentMeasureIndex(): number {
-    const numMeasures = this.numMeasures();
+    const numMeasures = this.actualNumMeasures();
+    return numMeasures === 0 ? -1 : Math.floor(this.subsectionRelativeCurrentTime()) % numMeasures;
+  }
 
-    if (numMeasures === 0) {
-      return -1;
-    }
-
-    const measureDuration = this.measureDurationSecs();
-    const fracMeasure = this.elapsedTime() / measureDuration;
-    const floorMeasure = Math.floor(fracMeasure);
-    
-    return floorMeasure % numMeasures + this.measureOffset;
+  nextMeasureIndex(after: number): number {
+    return ((Math.floor(after) - this.measureOffset + 1) % this.numMeasures()) + this.measureOffset;
   }
 
   markNoteOnset(note: Note): void {
@@ -452,20 +473,11 @@ export class Sequence {
       return;
     }
 
-    const elapsedTime = this.elapsedTime();
+    const relativeTime = this.subsectionRelativeCurrentTime();
+    const relativeFrac = relativeTime - Math.floor(relativeTime);
+    const currMeasure = Math.floor(relativeTime) % this.actualNumMeasures();
 
-    if (elapsedTime < 0) {
-      console.error('Internal error: elapsed time < 0.');
-      return;
-    }
-
-    const measureDuration = this.measureDurationSecs();
-    const fracMeasure = elapsedTime / measureDuration;
-    const floorMeasure = Math.floor(fracMeasure);
-    const currMeasure = floorMeasure % numMeasures + this.measureOffset;
-    const relativeTime = fracMeasure - floorMeasure;
-
-    this.measures[currMeasure].addNote(relativeTime, note);
+    this.measures[currMeasure].addNote(relativeFrac, note);
   }
 
   private copyCommonProps(b: Sequence): void {
@@ -547,6 +559,42 @@ export class SequenceNoteOnListener {
     const elapsed = (ct - noteStart) / this.noteDistanceSecs;
 
     return isNaN(elapsed) ? 0 : Math.max(0, Math.min(elapsed, 1));
+  }
+
+  tNote(note0: number, semitone: number): number {
+    if (!this.scheduler.isPlaying()) {
+      return 1;
+    }
+
+    const rel = this.sequence.subsectionRelativeCurrentTime();
+    const numMeasures = this.sequence.actualNumMeasures();
+
+    if (rel > numMeasures) {
+      return 1;
+    } else if (rel === note0) {
+      return 0;
+    }
+
+    const note1 = this.sequence.nextRelativeNoteTime(note0, false, semitone);
+
+    if (note1 === -1) {
+      return 1;
+    }
+
+    const relativeDist = this.sequence.relativeNoteDistance(note0, note1);
+    let numerator: number;
+
+    if (rel < note0) {
+      if (note1 > note0) {
+        return 1;
+      } else {
+        numerator = rel + numMeasures - note0;
+      }
+    } else {
+      numerator = rel - note0;
+    }
+
+    return numerator / relativeDist;
   }
 
   update(): void {

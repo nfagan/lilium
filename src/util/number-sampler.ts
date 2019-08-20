@@ -38,11 +38,15 @@ export class NumberSampler {
 
   nthNextSample(n: number): number {
     const sample = this.buffer[this.sampleIndex];
-    this.sampleIndex += Math.floor(n);
-    if (this.sampleIndex >= this.numSamples) {
-      this.sampleIndex = 0;
-    }
+    this.sampleIndex += n;
+    this.sampleIndex %= this.numSamples;
     return sample;
+    // const sample = this.buffer[this.sampleIndex];
+    // this.sampleIndex += Math.floor(n);
+    // if (this.sampleIndex >= this.numSamples) {
+    //   this.sampleIndex = 0;
+    // }
+    // return sample;
   }
 
   nextSample(): number {

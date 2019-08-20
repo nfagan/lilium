@@ -51,21 +51,11 @@ var quit_ = function(status, toThrow) {
 // Determine the runtime environment we are in. You can customize this by
 // setting the ENVIRONMENT setting at compile time (see settings.js).
 
-var ENVIRONMENT_IS_WEB = false;
+var ENVIRONMENT_IS_WEB = true;
 var ENVIRONMENT_IS_WORKER = false;
 var ENVIRONMENT_IS_NODE = false;
-var ENVIRONMENT_HAS_NODE = false;
+var ENVIRONMENT_HAS_NODE = ENVIRONMENT_IS_NODE;
 var ENVIRONMENT_IS_SHELL = false;
-ENVIRONMENT_IS_WEB = typeof window === 'object';
-ENVIRONMENT_IS_WORKER = typeof importScripts === 'function';
-// A web environment like Electron.js can have Node enabled, so we must
-// distinguish between Node-enabled environments and Node environments per se.
-// This will allow the former to do things like mount NODEFS.
-// Extended check using process.versions fixes issue #8816.
-// (Also makes redundant the original check that 'require' is a function.)
-ENVIRONMENT_HAS_NODE = typeof process === 'object' && typeof process.versions === 'object' && typeof process.versions.node === 'string';
-ENVIRONMENT_IS_NODE = ENVIRONMENT_HAS_NODE && !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_WORKER;
-ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIRONMENT_IS_WORKER;
 
 if (Module['ENVIRONMENT']) {
   throw new Error('Module.ENVIRONMENT has been deprecated. To force the environment, use the ENVIRONMENT compile-time option (for example, -s ENVIRONMENT=web or -s ENVIRONMENT=node)');
@@ -95,93 +85,6 @@ var read_,
     readBinary,
     setWindowTitle;
 
-if (ENVIRONMENT_IS_NODE) {
-  scriptDirectory = __dirname + '/';
-
-  // Expose functionality in the same simple way that the shells work
-  // Note that we pollute the global namespace here, otherwise we break in node
-  var nodeFS;
-  var nodePath;
-
-  read_ = function shell_read(filename, binary) {
-    var ret;
-      if (!nodeFS) nodeFS = require('fs');
-      if (!nodePath) nodePath = require('path');
-      filename = nodePath['normalize'](filename);
-      ret = nodeFS['readFileSync'](filename);
-    return binary ? ret : ret.toString();
-  };
-
-  readBinary = function readBinary(filename) {
-    var ret = read_(filename, true);
-    if (!ret.buffer) {
-      ret = new Uint8Array(ret);
-    }
-    assert(ret.buffer);
-    return ret;
-  };
-
-  if (process['argv'].length > 1) {
-    thisProgram = process['argv'][1].replace(/\\/g, '/');
-  }
-
-  arguments_ = process['argv'].slice(2);
-
-  // MODULARIZE will export the module in the proper place outside, we don't need to export here
-
-  process['on']('uncaughtException', function(ex) {
-    // suppress ExitStatus exceptions from showing an error
-    if (!(ex instanceof ExitStatus)) {
-      throw ex;
-    }
-  });
-
-  process['on']('unhandledRejection', abort);
-
-  quit_ = function(status) {
-    process['exit'](status);
-  };
-
-  Module['inspect'] = function () { return '[Emscripten Module object]'; };
-} else
-if (ENVIRONMENT_IS_SHELL) {
-
-
-  if (typeof read != 'undefined') {
-    read_ = function shell_read(f) {
-      return read(f);
-    };
-  }
-
-  readBinary = function readBinary(f) {
-    var data;
-    if (typeof readbuffer === 'function') {
-      return new Uint8Array(readbuffer(f));
-    }
-    data = read(f, 'binary');
-    assert(typeof data === 'object');
-    return data;
-  };
-
-  if (typeof scriptArgs != 'undefined') {
-    arguments_ = scriptArgs;
-  } else if (typeof arguments != 'undefined') {
-    arguments_ = arguments;
-  }
-
-  if (typeof quit === 'function') {
-    quit_ = function(status) {
-      quit(status);
-    };
-  }
-
-  if (typeof print !== 'undefined') {
-    // Prefer to use print/printErr where they exist, as they usually work better.
-    if (typeof console === 'undefined') console = {};
-    console.log = print;
-    console.warn = console.error = typeof printErr !== 'undefined' ? printErr : print;
-  }
-} else
 if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
   if (ENVIRONMENT_IS_WORKER) { // Check worker, not web, since window could be polyfilled
     scriptDirectory = self.location.href;
@@ -203,6 +106,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
     scriptDirectory = '';
   }
 
+  if (!(typeof window === 'object' || typeof importScripts === 'function')) throw new Error('not compiled for this environment (did you build to HTML and try to run it not on the web, or set ENVIRONMENT to something - like node - and run it someplace else - like on the web?)');
 
   read_ = function shell_read(url) {
       var xhr = new XMLHttpRequest();

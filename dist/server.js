@@ -9,6 +9,9 @@ app.use(express.static('dist'));
 app.get('main.js', function (req, res) {
     res.sendFile('main.js');
 });
+app.get('/fast-grass.wasm', function (req, res) {
+    joinPathAndSendResourceOr404(res, 'res/wasm/', 'fast-grass.wasm');
+});
 app.get('/', function (req, res) {
     res.sendFile('index.html', { root: __dirname });
 });

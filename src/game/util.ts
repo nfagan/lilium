@@ -7,11 +7,22 @@ export function getBufferSourceNodeChannelData(bufferSource: AudioBufferSourceNo
   return buffer.getChannelData(channel);
 }
 
-export function makeNormalizedRandomizedSamplers(numSamplers: number, sourceData: BuiltinRealArray): Array<NumberSampler> {
+export function makeRandomizedIndices(out: BuiltinRealArray, numElementsInIndexedData: number): void {
+  const gr = math.goldenRatio();
+  const numIndices = out.length;
+
+  let value = Math.random();
+  
+  for (let i = 0; i < numIndices; i++) {
+    value += gr;
+    value %= 1.0;
+    out[i] = Math.floor((numElementsInIndexedData-1) * value);
+  }
+}
+
+export function makeRandomizedSamplers(numSamplers: number, sourceData: BuiltinRealArray): Array<NumberSampler> {
   //  https://blog.demofox.org/2017/05/29/when-random-numbers-are-too-random-low-discrepancy-sequences/
   const samplers: Array<NumberSampler> = [];
-  
-  math.normalize01(sourceData, sourceData);
 
   const gr = math.goldenRatio();
   let value = Math.random();
@@ -26,6 +37,12 @@ export function makeNormalizedRandomizedSamplers(numSamplers: number, sourceData
   }
 
   return samplers;
+}
+
+export function makeNormalizedRandomizedSamplers(numSamplers: number, sourceData: BuiltinRealArray): Array<NumberSampler> {
+  //  https://blog.demofox.org/2017/05/29/when-random-numbers-are-too-random-low-discrepancy-sequences/  
+  math.normalize01(sourceData, sourceData);
+  return makeRandomizedSamplers(numSamplers, sourceData);
 }
 
 export function makeAudioBufferSamplers(numSamplers: number, bufferSource: AudioBufferSourceNode): Array<NumberSampler> {

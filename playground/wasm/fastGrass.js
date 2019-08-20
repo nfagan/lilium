@@ -1,4 +1,4 @@
-// ~/repositories/emsdk/fastcomp/emscripten/emcc -o fast-grass.html ./fastGrassUpdate.cpp -s EXPORTED_FUNCTIONS='["_fast_grass_update"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]' -s MODULARIZE=1 -s 'EXPORT_NAME="FastGrass"'
+// ~/repositories/emsdk/fastcomp/emscripten/emcc -o fast-grass.js ./fastGrassUpdate.cpp -s EXPORTED_FUNCTIONS='["_fast_grass_update"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]' -s MODULARIZE=1 -s 'EXPORT_NAME="FastGrass"' -s "ENVIRONMENT='web'"
 
 const grassModuleInit = require('./fast-grass.js');
 

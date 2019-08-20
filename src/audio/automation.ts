@@ -133,7 +133,7 @@ export class Automation {
       // console.warn('t < 0: ', t);
       t = 0;
     } else if (t > 1) {
-      // console.warn('t > 1: ', t, distToStart, relativeTime, dist01, index0, index1);
+      // console.warn('t > 1: ', t, distToStart, dist01, index0, index1);
       t = 1;
     }
 

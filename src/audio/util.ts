@@ -1,3 +1,7 @@
+export function semitoneToFrequency(st: number): number {
+  return 440 * Math.pow(2, st/12) / Math.pow(2, 21/12);
+}
+
 export function setOpposingValuesAtTime(targetParam: AudioParam, oppositeParam: AudioParam): (a: number, t: number) => void {
   return (a, t) => {
     targetParam.setValueAtTime(a, t);
