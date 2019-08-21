@@ -100,7 +100,6 @@ class AirParticleData {
     const twoPi = Math.PI * 2;
 
     for (let i = 0; i < numParticles; i++) {
-      // const noiseSample = noiseSamplers[i].nextSample();
       const noiseSample = noiseSamplers[i].nthNextSample(sampleIncrement);
       const halfNoiseSample = noiseSample - 0.5;
       const ind3 = i * 3;

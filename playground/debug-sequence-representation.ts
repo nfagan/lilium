@@ -347,7 +347,7 @@ class SequenceModel {
   }
 }
 
-const IS_FULLSCREEN = true;
+const IS_FULLSCREEN = false;
 
 type Sounds = {
   piano: AudioBuffer,
@@ -421,7 +421,7 @@ const GAME: Game = {
   },
   grassModelOptions: {numSegments: 3},
   grassTextureOptions: {textureSize: 256, tryUseWasm: true},
-  imageQualityManager: new ImageQualityManager(ImageQuality.Low),
+  imageQualityManager: new ImageQualityManager(ImageQuality.Medium),
   scene: new wgl.Scene(),
   sequenceAggregate: null
 };
@@ -496,10 +496,6 @@ function makeSequenceAggregate(sounds: Sounds, audioContext: AudioContext, keybo
 
   document.body.addEventListener('touchstart', e => {
     play();
-
-    for (let i = 0; i < e.touches.length; i++) {
-      recorder();
-    }
   });
 
   return {

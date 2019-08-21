@@ -1,3 +1,4 @@
+//  @ts-ignore
 import * as ModuleLoader from '../../../../dist/res/wasm/fast-grass.js';
 
 export type GrassModule = WebAssembly.Module & {
@@ -9,7 +10,6 @@ export type GrassModule = WebAssembly.Module & {
   _fast_grass_free_float_array: (ptr: number) => void,
   _fast_grass_free_uint8_array: (ptr: number) => void,
   _fast_grass_free_int32_array: (ptr: number) => void,
-  _fast_grass_set_value: (ptr: number, value: number, idx: number) => void,
   _fast_grass_float_array_to_uint8_array: (srcPtr: number, destPtr: number, size: number) => void;
   _malloc: (a: number) => number,
   wasmMemory: WebAssembly.Memory
@@ -37,7 +37,6 @@ export async function loadModule(memory: WebAssembly.Memory): Promise<GrassModul
         _fast_grass_new_float_array: mod._fast_grass_new_float_array,
         _fast_grass_new_uint8_array: mod._fast_grass_new_uint8_array,
         _fast_grass_free_float_array: mod._fast_grass_free_float_array,
-        _fast_grass_set_value: mod._fast_grass_set_value,
         _fast_grass_new_int32_array: mod._fast_grass_new_int32_array,
         _fast_grass_free_int32_array: mod._fast_grass_free_int32_array,
         _fast_grass_free_uint8_array: mod._fast_grass_free_uint8_array,

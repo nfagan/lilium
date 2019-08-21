@@ -63,6 +63,15 @@ class Envelope implements IRoutable {
     value = audioUtil.clampGain(value);
     this.gain.gain.setValueAtTime(value, time);
   }
+
+  ramp(value: number, time: number): void {
+    const ct = this.context.currentTime;
+    const duration = Math.max(0.001, ct - time);
+    const timeConstant = duration / 3;
+
+    value = audioUtil.clampGain(value);
+    this.gain.gain.setTargetAtTime(value, ct, timeConstant);
+  }
 }
 
 class Synth implements IRoutable {
@@ -118,7 +127,7 @@ class Synth implements IRoutable {
   }
 
   cancel(time: number): void {
-    this.envelope.set(0, time);
+    this.envelope.ramp(0, time);
     this.stop(time);
   }
 
@@ -168,13 +177,12 @@ function semitoneJitter(amount: number): number {
   return Math.random() * amount * sign;
 }
 
-function pentatonicMaker(): () => number {
+function pentatonicMaker(keyOffset: number = 0): () => number {
   let semitoneIdx = 0;
 
   return () => {
     const jitter = 0.12;
     const semitones = [0, 3, 5, 7, 10, 7, 5, 3];
-    const keyOffset = 0;
     const semitone = semitones[semitoneIdx] + keyOffset;
     const pitch = semitone + semitoneJitter(jitter);
 
@@ -215,7 +223,45 @@ function noteOnAudioBuffer(buffer: AudioBuffer, effects: Effects): audioTypes.No
 }
 
 function noteOnSynth(effects: Effects): audioTypes.NoteOnFunction {
-  return (context, note, startTime, relativeTime) => playSynth(context, context.destination, effects, note, startTime);
+  return (context, note, startTime, relativeTime) => playSynthArpeggiator(context, context.destination, effects, note, startTime);
+}
+
+function playSynthArpeggiator(audioContext: AudioContext, destination: AudioDestinationNode, effects: Effects, note: audioTypes.Note, when: number): NoteCancelFunction {
+  const semitone = note.semitone + 12;
+  const numNotes = 10;
+  const cancelFunctions: Array<NoteCancelFunction> = [];
+  const pentatonic = pentatonicMaker(semitone);
+  let offset = when;
+
+  for (let i = 0; i < numNotes; i++) {
+    const st = pentatonic();
+    const freq = audioUtil.semitoneToFrequency(st);
+
+    const synth = new Synth(audioContext);
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.15, audioContext.currentTime);
+
+    synth.connect(gain);
+    effects.delay.accept(gain);
+    effects.delay.connectRoutable(effects.reverb);
+    effects.reverb.connect(destination);
+
+    synth.start(freq, offset);
+    synth.stop(offset + 1);
+
+    offset += 0.025;
+
+    cancelFunctions.push(() => {
+      synth.cancel(0);
+      synth.disconnect();
+    });
+  }
+
+  return () => {
+    for (let i = 0; i < cancelFunctions.length; i++) {
+      cancelFunctions[i]();
+    }
+  }
 }
 
 function playSynth(audioContext: AudioContext, destination: AudioDestinationNode, effects: Effects, note: audioTypes.Note, when: number): NoteCancelFunction {
@@ -223,8 +269,12 @@ function playSynth(audioContext: AudioContext, destination: AudioDestinationNode
   const freq = audioUtil.semitoneToFrequency(semitone);
 
   const synth = new Synth(audioContext);
+  const gain = audioContext.createGain();
+  gain.gain.setValueAtTime(0.25, audioContext.currentTime);
 
-  synth.connectRoutable(effects.delay);
+  synth.connect(gain);
+  effects.delay.accept(gain);
+  // synth.connectRoutable(effects.delay);
   effects.delay.connectRoutable(effects.reverb);
   effects.reverb.connect(destination);
 
@@ -307,7 +357,7 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: SequenceN
   }
 
   const minNote = -12;
-  const maxNote = 12;
+  const maxNote = 24;
   const noteSpan = maxNote - minNote;
 
   for (let i = 0; i < noteSpan; i++) {
@@ -484,16 +534,17 @@ export async function main(): Promise<void> {
 
   const dummySequences: Array<Sequence> = [];
 
-  for (let i = 0; i < 1000; i++) {
+  for (let i = 0; i < 100; i++) {
     const seq = scheduler.makeSequence(noteOnFunc);
     seq.addMeasures(2);
+    // seq.scheduleNoteOnset(Math.random() * 2, audioTypes.makeNote(pentScale()));
     seq.loop = true;
     dummySequences.push(seq);
   }
 
   makePianoRoll(keyboard, note => {
     sequence.markNoteOnset(note);
-    playSynth(audioContext, audioContext.destination, sequenceEffects, note, audioContext.currentTime);
+    playSynthArpeggiator(audioContext, audioContext.destination, sequenceEffects, note, audioContext.currentTime);
   });
 
   const sequenceListener = new SequenceNoteOnListener(scheduler, sequence);
@@ -584,7 +635,7 @@ export async function main(): Promise<void> {
 
   const automationCanvas = makeCanvas(document.body);
   const automationCtx = automationCanvas.getContext('2d');
-  // automation.addSample(0.75, 0.5);
+  automation.addSample(1, 0);
   // automation.addSample(0.5, 0.25);
   automationCanvas.addEventListener('click', e => {
     const boundRect = automationCanvas.getBoundingClientRect();

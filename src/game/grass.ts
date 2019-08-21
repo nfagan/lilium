@@ -108,21 +108,24 @@ class GrassTextureData {
     const mod = this.module;
     const numPixels = this.numPixels;
     const numNoiseSamples = this.noiseSource.length;
-    let failReason: string;
+    let message: string;
     let canCreate = false;
 
     if (!mod) {
-      failReason = 'wasm module was null. Falling back to js implementation.'
+      message = 'wasm module was null. Falling back to js implementation.'
     } else if (this.checkMemory()) {
-      failReason = 'Insufficient memory to create wasm buffers. Falling back to js implementation.';
+      message = 'Insufficient memory to create wasm buffers. Falling back to js implementation.';
     } else {
+      message = 'Using wasm implementation.';
       canCreate = true;
     }
 
     if (!canCreate) {
-      console.warn(failReason);
+      console.warn(message);
       this.createJs();
       return;
+    } else {
+      console.log(message);
     }
 
     this.windPtr = mod._fast_grass_new_uint8_array(numPixels*4);
@@ -145,7 +148,7 @@ class GrassTextureData {
   }
 
   private createJs(): void {
-    console.log('Attempting to use js implementation.');
+    console.log('Using js implementation.');
 
     this.wind = makeUint8TextureData(this.textureSize, 4);
     this.velocity = makeUint8TextureData(this.textureSize, 4);

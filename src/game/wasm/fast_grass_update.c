@@ -1,4 +1,3 @@
-// #include <emscripten.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,10 +29,6 @@ void fast_grass_float_array_to_uint8_array(float* source, uint8_t* dest, int32_t
   for (int32_t i = 0; i < size; i++) {
     dest[i] = (uint8_t)(255.0f * source[i]);
   }
-}
-
-void fast_grass_set_value(float* arr, float value, int32_t at_idx) {
-  arr[at_idx] = value;
 }
 
 void fast_grass_update_wind(uint8_t* restrict wind_texture, uint8_t* restrict velocity_texture, const uint8_t* restrict noise, int32_t* restrict noise_indices, int32_t num_pixels, int32_t num_samples, float wind_vx, float wind_vz, float decay_amt) {
