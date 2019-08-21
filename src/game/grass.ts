@@ -1,5 +1,5 @@
 import { Texture2D, math, debug, RenderContext, types, Vao, Program, ICamera } from '../gl';
-import { NumberSampler, asyncTimeout, loadAudioBufferSourceNode } from '../util';
+import { asyncTimeout, loadAudioBufferSourceNode } from '../util';
 import * as gameUtil from './util';
 import * as grassProgramSources from './shaders/grass';
 import * as wasm from './wasm';
@@ -103,14 +103,24 @@ class GrassTextureData {
   }
 
   private createWasm(): void {
-    console.log('Attempting to use WASM implementation.');
+    console.log('Attempting to use wasm implementation.');
 
     const mod = this.module;
     const numPixels = this.numPixels;
     const numNoiseSamples = this.noiseSource.length;
+    let failReason: string;
+    let canCreate = false;
 
-    if (this.checkMemory()) {
-      console.warn('Insufficient memory to create WASM buffers. Falling back to JS implementation.');
+    if (!mod) {
+      failReason = 'wasm module was null. Falling back to js implementation.'
+    } else if (this.checkMemory()) {
+      failReason = 'Insufficient memory to create wasm buffers. Falling back to js implementation.';
+    } else {
+      canCreate = true;
+    }
+
+    if (!canCreate) {
+      console.warn(failReason);
       this.createJs();
       return;
     }
@@ -135,7 +145,7 @@ class GrassTextureData {
   }
 
   private createJs(): void {
-    console.log('Attempting to use JS implementation.');
+    console.log('Attempting to use js implementation.');
 
     this.wind = makeUint8TextureData(this.textureSize, 4);
     this.velocity = makeUint8TextureData(this.textureSize, 4);
@@ -189,7 +199,6 @@ class GrassTextureData {
 
 export class GrassTextureManager {
   private gl: WebGLRenderingContext;
-  private windNoiseSamplers: Array<NumberSampler>;
   private textureSize: number;
   private isCreated: boolean;
   private windNoiseSource: Float32Array;
@@ -240,12 +249,10 @@ export class GrassTextureManager {
     const useWasm = options.tryUseWasm;
 
     math.normalize01(this.windNoiseSource, this.windNoiseSource);
-    const samplers = gameUtil.makeRandomizedSamplers(textureSize * textureSize, this.windNoiseSource);
 
     this.grassData.create(useWasm, this.windNoiseSource, textureSize);
 
     this.makeTextures(this.gl, textureSize);
-    this.windNoiseSamplers = samplers;
     this.textureSize = textureSize;
     this.windNoiseIndices = new Uint32Array(this.windNoiseSource.length);
     this.makeWindNoiseIndices();
@@ -300,7 +307,6 @@ export class GrassTextureManager {
     }
 
     const grassTileInfo = this.grassTileInfo;
-    const windAudioSamplers = this.windNoiseSamplers;
     const windTexture = this.windTexture;
     const velocityTexture = this.velocityTexture;
     const windNoiseSource = this.windNoiseSource;
@@ -353,7 +359,6 @@ export class GrassTextureManager {
     const numPixelsTexture = windTextureData.length / windTexture.numComponentsPerPixel();
 
     for (let i = 0; i < numPixelsTexture; i++) {
-      // const sample = windAudioSamplers[i].nthNextSample(sampleIncrement);
       const index = (this.windNoiseIndices[i] + sampleIncrement) % windNoiseSourceLength;
       const sample = windNoiseSource[index];
       this.windNoiseIndices[i] = index;
