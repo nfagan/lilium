@@ -94,12 +94,11 @@ class AirParticleData {
       this.dispose();
     }
 
-    this.isWasm = isWasm;
     this.module = wasmModule;
     this.numParticles = numParticles;
     this.numNoiseSamples = noiseSource.length;
 
-    if (this.isWasm) {
+    if (isWasm) {
       this.createWasm(xzScale, noiseSource);
     } else {
       this.createJs(xzScale, noiseSource);
@@ -188,7 +187,7 @@ class AirParticleData {
 
     if (!mod) {
       if (process.env.NODE_ENV === 'development') {
-        console.warn('was module was null.');
+        console.warn('wasm module was null.');
       }
       this.createJs(xzScale, noiseSource);
       return; 
@@ -232,6 +231,7 @@ class AirParticleData {
     gameUtil.makeRandomizedIndices(this.noiseIndices, noiseSource.length);
 
     this.initialize(numParticles, xzScale);
+    this.isWasm = true;
   }
 
   private createJs(xzScale: number, noiseSource: Float32Array): void {
@@ -250,6 +250,7 @@ class AirParticleData {
     this.noiseSamplers = gameUtil.makeNormalizedRandomizedSamplers(numParticles, noiseSource);
 
     this.initialize(numParticles, xzScale);
+    this.isWasm = false;
   }
 
   update(dt: number, playerAabb: math.Aabb, normX: number, normZ: number): void {

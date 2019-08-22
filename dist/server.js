@@ -9,14 +9,11 @@ app.use(express.static('dist'));
 app.get('main.js', function (req, res) {
     res.sendFile('main.js');
 });
-app.get('/fast-grass.wasm', function (req, res) {
-    joinPathAndSendResourceOr404(res, 'res/wasm/', 'fast-grass.wasm');
-});
-app.get('/air-particles.wasm', function (req, res) {
-    joinPathAndSendResourceOr404(res, 'res/wasm/', 'air-particles.wasm');
-});
 app.get('/', function (req, res) {
     res.sendFile('index.html', { root: __dirname });
+});
+app.get('/wasm/:scriptName', function (req, res) {
+    joinPathAndSendResourceOr404(res, 'res/wasm/', req.params.scriptName.replace(':', '/'));
 });
 app.get('/buffer/:bufferName', function (req, res) {
     joinPathAndSendResourceOr404(res, 'res/buffers/', req.params.bufferName.replace(':', '/'));

@@ -12,16 +12,12 @@ app.get('main.js', (req: Request, res: Response) => {
   res.sendFile('main.js');
 });
 
-app.get('/fast-grass.wasm', (req: Request, res: Response) => {
-  joinPathAndSendResourceOr404(res, 'res/wasm/', 'fast-grass.wasm');
-});
-
-app.get('/air-particles.wasm', (req: Request, res: Response) => {
-  joinPathAndSendResourceOr404(res, 'res/wasm/', 'air-particles.wasm');
-});
-
 app.get('/', (req: Request, res: Response) => {
   res.sendFile('index.html', {root: __dirname});
+});
+
+app.get('/wasm/:scriptName', (req: Request, res: Response) => {
+  joinPathAndSendResourceOr404(res, 'res/wasm/', req.params.scriptName.replace(':', '/'));
 });
 
 app.get('/buffer/:bufferName', (req: Request, res: Response) => {

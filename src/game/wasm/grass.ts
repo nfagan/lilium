@@ -1,5 +1,6 @@
 //  @ts-ignore
 import * as ModuleLoader from '../../../../dist/res/wasm/fast-grass.js';
+import { defaultLocateFileFunction } from './util';
 
 export type GrassModule = WebAssembly.Module & {
   _fast_grass_update_wind: (wt: number, vt: number, noise: number, indices: number, numPixels: number, numSamples: number, windVx: number, windVz: number, decayAmt: number) => void,
@@ -26,7 +27,8 @@ export function makeMemory(): WebAssembly.Memory {
 export async function loadModule(memory: WebAssembly.Memory): Promise<GrassModule> {
   return new Promise((resolve, reject) => {
     const options = {
-      wasmMemory: memory
+      wasmMemory: memory,
+      locateFile: defaultLocateFileFunction
     }
 
     ModuleLoader(options).then((mod: any) => {
