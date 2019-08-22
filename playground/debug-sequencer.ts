@@ -1,143 +1,10 @@
 import { loadAudioBuffer, asyncTimeout, ObjectToggle, True } from '../src/util';
 import { debug, Keyboard, Keys } from '../src/gl';
-import { Scheduler, Sequence, types as audioTypes, SequenceNoteOnListener, Delay, Reverb, Pass, Automation, Effect, util as audioUtil } from '../src/audio';
-import { NoteCancelFunction, ScheduledNote, IRoutable } from '../src/audio/types';
+import { Scheduler, Sequence, types as audioTypes, SequenceNoteOnListener, Delay, Reverb, Pass, Automation, Effect, 
+  util as audioUtil, Synth } from '../src/audio';
+import { NoteCancelFunction, ScheduledNote } from '../src/audio/types';
 
 const keyboard = new Keyboard();
-
-class Envelope implements IRoutable {
-  private context: AudioContext;
-  private gain: GainNode;
-
-  attack: number;
-  sustain: number;
-  decay: number;
-  release: number;
-
-  constructor(context: AudioContext) {
-    this.context = context;
-    this.gain = context.createGain();
-    this.gain.gain.setValueAtTime(1, context.currentTime);
-
-    this.attack = 0.1;
-    this.sustain = audioUtil.clampGain(0);
-    this.decay = 0.75;
-    this.release = 0.05;
-  }
-
-  connectRoutable(to: IRoutable): void {
-    to.accept(this.gain);
-  }
-
-  connect(to: AudioNode): void {
-    this.gain.connect(to);
-  }
-
-  disconnectFrom(node: AudioNode): void {
-    this.gain.disconnect(node);
-  }
-
-  disconnect(): void {
-    this.gain.disconnect();
-  }
-
-  accept(input: AudioNode): void {
-    input.connect(this.gain);
-  }
-
-  reject(input: AudioNode): void {
-    input.disconnect(this.gain);
-  }
-
-  trigger(when: number): void {
-    const timeConstantMultiplier = 4;
-    const minGain = audioUtil.clampGain(0);
-
-    this.gain.gain.setValueAtTime(minGain, when);
-    this.gain.gain.setTargetAtTime(1, when, this.attack/timeConstantMultiplier);
-    this.gain.gain.setTargetAtTime(this.sustain, when + this.attack, this.decay/timeConstantMultiplier);
-    this.gain.gain.setTargetAtTime(minGain, when + this.attack + this.decay, this.release/timeConstantMultiplier);
-  }
-
-  set(value: number, time: number): void {
-    value = audioUtil.clampGain(value);
-    this.gain.gain.setValueAtTime(value, time);
-  }
-
-  ramp(value: number, time: number): void {
-    const ct = this.context.currentTime;
-    const duration = Math.max(0.001, ct - time);
-    const timeConstant = duration / 3;
-
-    value = audioUtil.clampGain(value);
-    this.gain.gain.setTargetAtTime(value, ct, timeConstant);
-  }
-}
-
-class Synth implements IRoutable {
-  private context: AudioContext;
-  private oscillator: OscillatorNode;
-  private envelope: Envelope;
-  private isConnected: boolean;
-  private isStopped: boolean;
-
-  constructor(context: AudioContext) {
-    this.context = context;
-    this.oscillator = this.context.createOscillator();
-    this.envelope = new Envelope(context);
-    this.oscillator.type = 'sine';
-    this.envelope.accept(this.oscillator);
-    this.isConnected = false;
-    this.isStopped = false;
-  }
-
-  accept(input: AudioNode): void {
-    throw new Error('Synth cannot accept input.');
-  }
-
-  connect(to: AudioNode): void {
-    this.envelope.connect(to);
-    this.isConnected = true;
-  }
-
-  connectRoutable(to: IRoutable): void {
-    this.envelope.connectRoutable(to);
-    this.isConnected = true;
-  }
-
-  disconnectFrom(node: AudioNode): void {
-    if (this.isConnected) {
-      this.envelope.reject(this.oscillator);
-      this.envelope.disconnectFrom(node);
-      this.isConnected = false;
-    }
-  }
-
-  disconnect(): void {
-    if (this.isConnected) {
-      this.envelope.disconnect();
-      this.isConnected = false;
-    }
-  }
-
-  start(frequency: number, time: number): void {
-    this.envelope.trigger(time);
-    this.oscillator.frequency.setValueAtTime(frequency, time);
-    this.oscillator.start(time);
-  }
-
-  cancel(time: number): void {
-    this.envelope.ramp(0, time);
-    this.stop(time);
-  }
-
-  stop(time: number): void {
-    if (!this.isStopped) {
-      this.oscillator.stop(time);
-      this.isStopped = true;
-    }
-  }
-}
 
 type Sounds = {
   [k: string]: AudioBuffer
@@ -223,7 +90,7 @@ function noteOnAudioBuffer(buffer: AudioBuffer, effects: Effects): audioTypes.No
 }
 
 function noteOnSynth(effects: Effects): audioTypes.NoteOnFunction {
-  return (context, note, startTime, relativeTime) => playSynthArpeggiator(context, context.destination, effects, note, startTime);
+  return (context, note, startTime, relativeTime) => playSynth(context, context.destination, effects, note, startTime);
 }
 
 function playSynthArpeggiator(audioContext: AudioContext, destination: AudioDestinationNode, effects: Effects, note: audioTypes.Note, when: number): NoteCancelFunction {
@@ -274,7 +141,6 @@ function playSynth(audioContext: AudioContext, destination: AudioDestinationNode
 
   synth.connect(gain);
   effects.delay.accept(gain);
-  // synth.connectRoutable(effects.delay);
   effects.delay.connectRoutable(effects.reverb);
   effects.reverb.connect(destination);
 
@@ -544,7 +410,8 @@ export async function main(): Promise<void> {
 
   makePianoRoll(keyboard, note => {
     sequence.markNoteOnset(note);
-    playSynthArpeggiator(audioContext, audioContext.destination, sequenceEffects, note, audioContext.currentTime);
+    // playSynthArpeggiator(audioContext, audioContext.destination, sequenceEffects, note, audioContext.currentTime);
+    playSynth(audioContext, audioContext.destination, sequenceEffects, note, audioContext.currentTime);
   });
 
   const sequenceListener = new SequenceNoteOnListener(scheduler, sequence);

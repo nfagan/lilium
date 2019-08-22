@@ -16,6 +16,10 @@ app.get('/fast-grass.wasm', (req: Request, res: Response) => {
   joinPathAndSendResourceOr404(res, 'res/wasm/', 'fast-grass.wasm');
 });
 
+app.get('/air-particles.wasm', (req: Request, res: Response) => {
+  joinPathAndSendResourceOr404(res, 'res/wasm/', 'air-particles.wasm');
+});
+
 app.get('/', (req: Request, res: Response) => {
   res.sendFile('index.html', {root: __dirname});
 });

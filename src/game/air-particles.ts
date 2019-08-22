@@ -1,22 +1,40 @@
 import { debug, Program, Vao, math, types, RenderContext, Vbo, geometry } from '../gl';
 import { NumberSampler, asyncTimeout, loadAudioBufferSourceNode } from '../util';
 import * as programSources from './shaders/particles';
+import * as wasm from './wasm/air-particles';
+import * as wasmUtil from './wasm/util';
 import { mat4 } from 'gl-matrix';
 import { gameUtil } from '.';
 
 export class AirParticleResources {
   private loadTimeout: number;
   private noiseUrl: string;
+  private moduleMemory: WebAssembly.Memory;
 
   noiseSource: Float32Array;
+  wasmModule: wasm.AirParticlesModule;
 
-  constructor(loadTimeout: number, noiseUrl: string) {
+  constructor(loadTimeout: number, noiseUrl: string, moduleMemory: WebAssembly.Memory) {
     this.loadTimeout = loadTimeout;
     this.noiseUrl = noiseUrl;
     this.noiseSource = new Float32Array(1);
+    this.moduleMemory = moduleMemory;
+    this.wasmModule = null;
   }
 
-  async load(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
+  private async tryLoadModule(errCb: (err: Error) => void): Promise<void> {
+    let mod: wasm.AirParticlesModule = null;
+
+    try {
+      mod = await asyncTimeout(() => wasm.loadModule(this.moduleMemory), this.loadTimeout);
+    } catch (err) {
+      errCb(err);
+    }
+
+    this.wasmModule = mod;
+  }
+
+  private async tryLoadNoise(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
     try {
       const noiseSource = await asyncTimeout(() => loadAudioBufferSourceNode(audioContext, this.noiseUrl), this.loadTimeout);
       this.noiseSource = gameUtil.getBufferSourceNodeChannelData(noiseSource);
@@ -24,15 +42,22 @@ export class AirParticleResources {
       errCb(err);
     }
   }
+
+  async load(audioContext: AudioContext, errCb: (err: Error) => void): Promise<void> {
+    await this.tryLoadNoise(audioContext, errCb);
+    await this.tryLoadModule(errCb);
+  }
 }
 
 export type AirParticleOptions = {
   numParticles: number,
   particleGridScale: number,
-  particleScale: number
+  particleScale: number,
+  tryUseWasm: boolean
 }
 
 class AirParticleData {
+  private numNoiseSamples: number;
   numParticles: number;
 
   noiseSamplers: Array<NumberSampler>;
@@ -43,48 +68,223 @@ class AirParticleData {
   alphas: Float32Array;
   alphaSigns: Float32Array;
 
-  constructor(numParticles: number, xzScale: number, noiseSource: Float32Array) {
-    const numParticles3 = numParticles * 3;
+  private noiseIndices: Int32Array;
+  private playerPosition: Float32Array;
 
-    const translations = new Float32Array(numParticles3);
-    const offsets = new Float32Array(numParticles3);
-    const rotations = new Float32Array(numParticles3);
-    const alphas = new Float32Array(numParticles);
-    const alphaSigns = new Float32Array(numParticles);
+  private translationsPtr: number;
+  private offsetsPtr: number;
+  private rotationsPtr: number;
+  private alphasPtr: number;
+  private alphaSignsPtr: number;
+  private noiseSourcePtr: number;
+  private noiseIndicesPtr: number;
+  private playerPositionPtr: number;
 
+  private isCreated: boolean;
+  private isWasm: boolean;
+  private module: wasm.AirParticlesModule;
+
+  constructor() {
+    this.isCreated = false;
+    this.isWasm = false;
+  }
+
+  create(isWasm: boolean, wasmModule: wasm.AirParticlesModule, numParticles: number, xzScale: number, noiseSource: Float32Array): void {
+    if (this.isCreated) {
+      this.dispose();
+    }
+
+    this.isWasm = isWasm;
+    this.module = wasmModule;
+    this.numParticles = numParticles;
+    this.numNoiseSamples = noiseSource.length;
+
+    if (this.isWasm) {
+      this.createWasm(xzScale, noiseSource);
+    } else {
+      this.createJs(xzScale, noiseSource);
+    }
+
+    this.isCreated = true;
+  }
+
+  dispose(): void {
+    if (this.isCreated) {
+      if (this.isWasm) {
+        this.disposeWasm();
+      } else {
+        this.disposeJs();
+      }
+
+      this.isCreated = false;
+    }
+  }
+
+  private nullifyArrays(): void {
+    this.translations = null;
+    this.offsets = null;
+    this.rotations = null;
+    this.alphas = null;
+    this.alphaSigns = null;
+  }
+
+  private disposeJs(): void {
+    this.nullifyArrays();
+  }
+
+  private disposeWasm(): void {
+    this.module._lilium_free_float_array(this.translationsPtr);
+    this.module._lilium_free_float_array(this.offsetsPtr);
+    this.module._lilium_free_float_array(this.rotationsPtr);
+    this.module._lilium_free_float_array(this.alphasPtr);
+    this.module._lilium_free_float_array(this.alphaSignsPtr);
+    this.module._lilium_free_float_array(this.noiseSourcePtr);
+    this.module._lilium_free_int32_array(this.noiseIndicesPtr);
+    this.module._lilium_free_float_array(this.playerPositionPtr);
+
+    this.nullifyArrays();
+  }
+
+  private initialize(numParticles: number, xzScale: number): void {
     for (let i = 0; i < numParticles; i++) {
       const offsetX = Math.random() * xzScale - xzScale/2;
       const offsetY = Math.random() * 4 + 2;
       const offsetZ = Math.random() * xzScale - xzScale;
       const ind3 = i * 3;
 
-      offsets[ind3] = offsetX;
-      offsets[ind3+1] = offsetY;
-      offsets[ind3+2] = offsetZ;
+      this.offsets[ind3] = offsetX;
+      this.offsets[ind3+1] = offsetY;
+      this.offsets[ind3+2] = offsetZ;
 
-      translations[ind3] = offsetX;
-      translations[ind3+1] = offsetY;
-      translations[ind3+2] = offsetZ;
+      this.translations[ind3] = offsetX;
+      this.translations[ind3+1] = offsetY;
+      this.translations[ind3+2] = offsetZ;
 
-      rotations[ind3] = Math.random() * Math.PI * 2;
-      rotations[ind3+1] = Math.random() * Math.PI * 2;
-      rotations[ind3+2] = 0;
+      this.rotations[ind3] = Math.random() * Math.PI * 2;
+      this.rotations[ind3+1] = Math.random() * Math.PI * 2;
+      this.rotations[ind3+2] = 0;
 
-      alphas[i] = 1;
-      alphaSigns[i] = -1;
+      this.alphas[i] = 1;
+      this.alphaSigns[i] = -1;
     }
-
-    this.translations = translations;
-    this.offsets = offsets;
-    this.rotations = rotations;
-    this.alphas = alphas;
-    this.alphaSigns = alphaSigns;
-    this.numParticles = numParticles;
-
-    this.noiseSamplers = gameUtil.makeNormalizedRandomizedSamplers(numParticles, noiseSource);
   }
 
-  update(dt: number, playerAabb: math.Aabb, normX: number, normZ: number) {
+  private expectedToExceedWasmMemory(numParticles: number, noiseSource: Float32Array): boolean {
+    const translationBytes = numParticles * 3 * 4;
+    const offsetBytes = numParticles * 3 * 4;
+    const rotationBytes = numParticles * 3 * 4;
+    const alphaBytes = numParticles * 4;
+    const alphaSignBytes = numParticles * 4;
+    const noiseIndicesBytes = numParticles * 4;
+    const noiseBytes = noiseSource.length * 4;
+    const prospectiveUsage = translationBytes + offsetBytes + rotationBytes + alphaBytes + alphaSignBytes + noiseIndicesBytes + noiseBytes;
+
+    return prospectiveUsage > this.module.wasmMemory.buffer.byteLength;
+  }
+
+  private createWasm(xzScale: number, noiseSource: Float32Array): void {
+    const mod = this.module;
+    const numParticles = this.numParticles;
+
+    if (!mod) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('was module was null.');
+      }
+      this.createJs(xzScale, noiseSource);
+      return; 
+    }
+
+    if (this.expectedToExceedWasmMemory(numParticles, noiseSource)) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Insufficient memory for wasm implementation.');
+      }
+      this.createJs(xzScale, noiseSource);
+      return;
+    }
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Using wasm implementation.');
+    }
+
+    this.translationsPtr = mod._lilium_new_float_array(numParticles * 3);
+    this.offsetsPtr = mod._lilium_new_float_array(numParticles * 3);
+    this.rotationsPtr = mod._lilium_new_float_array(numParticles * 3);
+    this.alphasPtr = mod._lilium_new_float_array(numParticles);
+    this.alphaSignsPtr = mod._lilium_new_float_array(numParticles);
+    this.noiseIndicesPtr = mod._lilium_new_int32_array(numParticles);
+    this.noiseSourcePtr = mod._lilium_new_float_array(noiseSource.length);
+    this.playerPositionPtr = mod._lilium_new_float_array(3);
+
+    const memory = mod.wasmMemory;
+
+    this.translations = wasmUtil.makeFloat32Array(memory, this.translationsPtr, numParticles * 3);
+    this.offsets = wasmUtil.makeFloat32Array(memory, this.offsetsPtr, numParticles * 3);
+    this.rotations = wasmUtil.makeFloat32Array(memory, this.rotationsPtr, numParticles * 3);
+    this.alphas = wasmUtil.makeFloat32Array(memory, this.alphasPtr, numParticles);
+    this.alphaSigns = wasmUtil.makeFloat32Array(memory, this.alphaSignsPtr, numParticles);
+    this.noiseIndices = wasmUtil.makeInt32Array(memory, this.noiseIndicesPtr, numParticles);
+    this.playerPosition = wasmUtil.makeFloat32Array(memory, this.playerPositionPtr, 3);
+
+    const wasmNoiseSource = wasmUtil.makeFloat32Array(memory, this.noiseSourcePtr, noiseSource.length);
+    wasmNoiseSource.set(noiseSource);
+    math.normalize01(wasmNoiseSource, wasmNoiseSource);
+
+    gameUtil.makeRandomizedIndices(this.noiseIndices, noiseSource.length);
+
+    this.initialize(numParticles, xzScale);
+  }
+
+  private createJs(xzScale: number, noiseSource: Float32Array): void {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Using js implementation.');
+    }
+
+    const numParticles = this.numParticles;
+    const numParticles3 = numParticles * 3;
+
+    this.translations = new Float32Array(numParticles3);
+    this.offsets = new Float32Array(numParticles3);
+    this.rotations = new Float32Array(numParticles3);
+    this.alphas = new Float32Array(numParticles);
+    this.alphaSigns = new Float32Array(numParticles);
+    this.noiseSamplers = gameUtil.makeNormalizedRandomizedSamplers(numParticles, noiseSource);
+
+    this.initialize(numParticles, xzScale);
+  }
+
+  update(dt: number, playerAabb: math.Aabb, normX: number, normZ: number): void {
+    if (this.isWasm) {
+      this.updateWasm(dt, playerAabb, normX, normZ);
+    } else {
+      this.updateJs(dt, playerAabb, normX, normZ);
+    }
+  }
+
+  private updateWasm(dt: number, playerAabb: math.Aabb, normX: number, normZ: number): void {
+    const tp = this.translationsPtr;
+    const op = this.offsetsPtr;
+    const rp = this.rotationsPtr;
+    const ap = this.alphasPtr;
+    const asp = this.alphaSignsPtr;
+    const numParticles = this.numParticles;
+    const np = this.noiseSourcePtr;
+    const nip = this.noiseIndicesPtr;
+    const numNoiseSamples = this.numNoiseSamples;
+    
+    const dtRatio = math.dtSecRatio(dt);
+    const dtFactor = Math.max(dtRatio, 1);
+
+    const playerPosition = this.playerPosition;
+    const pp = this.playerPositionPtr;
+
+    playerPosition[0] = playerAabb.midX();
+    playerPosition[1] = playerAabb.minY;
+    playerPosition[2] = playerAabb.midZ();
+
+    this.module._update(tp, op, rp, ap, asp, numParticles, np, nip, numNoiseSamples, normX, normZ, dtFactor, pp);
+  }
+
+  private updateJs(dt: number, playerAabb: math.Aabb, normX: number, normZ: number): void {
     const translations = this.translations;
     const offsets = this.offsets;
     const rotations = this.rotations;
@@ -148,6 +348,7 @@ export class AirParticles {
   private airParticleData: AirParticleData;
   private drawable: types.Drawable;
   private noiseSource: Float32Array;
+  private wasmModule: wasm.AirParticlesModule;
   private renderContext: RenderContext;
   private translationVbo: Vbo;
   private alphaVbo: Vbo;
@@ -156,12 +357,14 @@ export class AirParticles {
   private particleDirectionNormal: types.Real3;
   private isCreated: boolean;
 
-  constructor(renderContext: RenderContext, noiseSource: Float32Array) {
+  constructor(renderContext: RenderContext, noiseSource: Float32Array, wasmModule: wasm.AirParticlesModule) {
     this.renderContext = renderContext;
     this.noiseSource = noiseSource;
+    this.wasmModule = wasmModule;
     this.particleScale = 0.005;
     this.particleColor = [1, 1, 1];
     this.particleDirectionNormal = [0, 0, 1];
+    this.airParticleData = new AirParticleData();
     this.isCreated = false;
     this.isPlaying = true;
   }
@@ -181,6 +384,7 @@ export class AirParticles {
 
     this.drawable.vao.dispose();
     this.program.dispose();
+    this.airParticleData.dispose();
     this.isCreated = false;
   }
 
@@ -231,7 +435,9 @@ export class AirParticles {
     const positions = geometry.quadPositions();
     const indices = geometry.quadIndices();
 
-    const airParticleData = new AirParticleData(numParticles, xzScale, this.noiseSource);
+    const airParticleData = this.airParticleData;
+    airParticleData.create(options.tryUseWasm, this.wasmModule, numParticles, xzScale, this.noiseSource);
+
     const translations = airParticleData.translations;
     const rotations = airParticleData.rotations;
     const alphas = airParticleData.alphas;
@@ -269,8 +475,6 @@ export class AirParticles {
     this.translationVbo = vao.getVbo('translation');
     this.alphaVbo = vao.getVbo('alpha');
     this.rotationVbo = vao.getVbo('rotation');
-
-    this.airParticleData = airParticleData;
 
     this.isCreated = true;
   }

@@ -12,6 +12,9 @@ app.get('main.js', function (req, res) {
 app.get('/fast-grass.wasm', function (req, res) {
     joinPathAndSendResourceOr404(res, 'res/wasm/', 'fast-grass.wasm');
 });
+app.get('/air-particles.wasm', function (req, res) {
+    joinPathAndSendResourceOr404(res, 'res/wasm/', 'air-particles.wasm');
+});
 app.get('/', function (req, res) {
     res.sendFile('index.html', { root: __dirname });
 });

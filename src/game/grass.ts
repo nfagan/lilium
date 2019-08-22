@@ -58,17 +58,15 @@ class GrassTextureData {
     this.module._fast_grass_update_wind(windPtr, velPtr, noisePtr, indicesPtr, numPixels, numSamples, windVx, windVz, decayAmt);
   }
 
-  updateVelocityDisplacementWasm(playerAabb: math.Aabb, offsetX: number, offsetY: number, offsetZ: number, scaleX: number, scaleZ: number, bladeHeight: number, maxDim: number): void {
+  updateVelocityDisplacementWasm(playerAabb: math.Aabb, playerX: number, playerY: number, playerZ: number, 
+    scaleX: number, scaleZ: number, bladeHeight: number, maxDim: number): void {
     const velPtr = this.velocityPtr;
     const textureSize = this.textureSize;
-
-    const playerX = playerAabb.midX() - offsetX;
-    const playerY = playerAabb.minY - offsetY;
-    const playerZ = playerAabb.midZ() - offsetZ;
     const playerWidth = playerAabb.width();
     const playerDepth = playerAabb.depth();
 
-    this.module._fast_grass_update_velocity_displacement(velPtr, textureSize, playerX, playerY, playerZ, playerWidth, playerDepth, scaleX, scaleZ, maxDim, bladeHeight);
+    this.module._fast_grass_update_velocity_displacement(velPtr, textureSize, playerX, playerY, playerZ, 
+      playerWidth, playerDepth, scaleX, scaleZ, maxDim, bladeHeight);
   }
 
   create(isWasm: boolean, noiseSource: Float32Array, textureSize: number): void {
@@ -91,7 +89,7 @@ class GrassTextureData {
     this.isCreated = true;
   }
 
-  private checkMemory(): boolean {
+  private expectedToExceedWasmMemory(): boolean {
     const numBytes = this.module.wasmMemory.buffer.byteLength;
     const windBytes = this.numPixels * 4;
     const velBytes = this.numPixels * 4;
@@ -103,8 +101,6 @@ class GrassTextureData {
   }
 
   private createWasm(): void {
-    console.log('Attempting to use wasm implementation.');
-
     const mod = this.module;
     const numPixels = this.numPixels;
     const numNoiseSamples = this.noiseSource.length;
@@ -113,7 +109,7 @@ class GrassTextureData {
 
     if (!mod) {
       message = 'wasm module was null. Falling back to js implementation.'
-    } else if (this.checkMemory()) {
+    } else if (this.expectedToExceedWasmMemory()) {
       message = 'Insufficient memory to create wasm buffers. Falling back to js implementation.';
     } else {
       message = 'Using wasm implementation.';
@@ -121,11 +117,15 @@ class GrassTextureData {
     }
 
     if (!canCreate) {
-      console.warn(message);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(message);
+      }
       this.createJs();
       return;
     } else {
-      console.log(message);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(message);
+      }
     }
 
     this.windPtr = mod._fast_grass_new_uint8_array(numPixels*4);
@@ -167,10 +167,13 @@ class GrassTextureData {
   }
 
   dispose(): void {
-    if (this.isWasm) {
-      this.disposeWasm();
-    } else {
-      this.disposeJs();
+    if (this.isCreated) {
+      if (this.isWasm) {
+        this.disposeWasm();
+      } else {
+        this.disposeJs();
+      }
+      this.isCreated = false;
     }
   }
 
@@ -183,20 +186,15 @@ class GrassTextureData {
 
   private disposeJs(): void {
     this.nullifyArrays();
-    this.isCreated = false;
   }
 
   private disposeWasm(): void {
-    if (this.isCreated) {
-      this.module._fast_grass_free_uint8_array(this.windPtr);
-      this.module._fast_grass_free_uint8_array(this.velocityPtr);
-      this.module._fast_grass_free_uint8_array(this.noisePtr);
-      this.module._fast_grass_free_int32_array(this.indicesPtr);
+    this.module._fast_grass_free_uint8_array(this.windPtr);
+    this.module._fast_grass_free_uint8_array(this.velocityPtr);
+    this.module._fast_grass_free_uint8_array(this.noisePtr);
+    this.module._fast_grass_free_int32_array(this.indicesPtr);
 
-      this.nullifyArrays();
-
-      this.isCreated = false;
-    }
+    this.nullifyArrays();
   }
 }
 
@@ -268,8 +266,6 @@ export class GrassTextureManager {
   }
 
   private makeTextures(gl: WebGLRenderingContext, textureSize: number): void {
-    // const windTextureData = makeUint8TextureData(textureSize, 4);
-    // const velocityTextureData = makeUint8TextureData(textureSize, 4);
     const windTextureData = this.grassData.wind;
     const velocityTextureData = this.grassData.velocity;
 
@@ -280,12 +276,15 @@ export class GrassTextureManager {
     this.windTexture = windTexture;
   }
 
-  updateWasm(dt: number, playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
+  public update(dt: number, playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
     if (this.grassData.isJs()) {
-      this.update(dt, playerAabb, scaleX, scaleZ, bladeHeight);
-      return;
+      this.updateJs(dt, playerAabb, scaleX, scaleZ, bladeHeight);
+    } else {
+      this.updateWasm(dt, playerAabb, scaleX, scaleZ, bladeHeight);
     }
+  }
 
+  private updateWasm(dt: number, playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
     const dtScaleRatio = Math.max(math.dtSecRatio(dt), 1);
 
     const windVx = this.windVx;
@@ -293,8 +292,12 @@ export class GrassTextureManager {
     const decayAmt = this.decayAmount * dtScaleRatio;
     const maxDim = this.grassTileInfo.dimension * this.grassTileInfo.density;
 
+    const playerX = playerAabb.midX() - this.offsetX;
+    const playerY = playerAabb.minY - this.offsetY;
+    const playerZ = playerAabb.midZ() - this.offsetZ;
+
     this.grassData.updateWindWasm(windVx, windVz, decayAmt);
-    this.grassData.updateVelocityDisplacementWasm(playerAabb, this.offsetX, this.offsetY, this.offsetZ, scaleX, scaleZ, bladeHeight, maxDim);
+    this.grassData.updateVelocityDisplacementWasm(playerAabb, playerX, playerY, playerZ, scaleX, scaleZ, bladeHeight, maxDim);
 
     this.velocityTexture.bind();
     this.velocityTexture.subImage(this.grassData.velocity);
@@ -303,7 +306,7 @@ export class GrassTextureManager {
     this.windTexture.subImage(this.grassData.wind);
   }
 
-  update(dt: number, playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
+  private updateJs(dt: number, playerAabb: math.Aabb, scaleX: number, scaleZ: number, bladeHeight: number): void {
     if (!this.isCreated) {
       console.warn('Grass textures not yet created.');
       return;
@@ -816,14 +819,9 @@ export class GrassComponent {
     this.isPlaying = !this.isPlaying;
   }
 
-  updateWasm(dt: number, playerAabb: math.Aabb): void {
-    this.grassTextures.updateWasm(dt, playerAabb, 1, 1, this.grassDrawable.scale[1]);
-  }
-
   update(dt: number, playerAabb: math.Aabb): void {
     if (this.isPlaying) {
-      const bladeHeight = this.grassDrawable.scale[1];
-      this.grassTextures.update(dt, playerAabb, 1, 1, bladeHeight);
+      this.grassTextures.update(dt, playerAabb, 1, 1, this.grassDrawable.scale[1]);
     }
   }
 

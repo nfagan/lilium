@@ -1,35 +1,16 @@
+#include "lilium.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define FAST_GRASS_CLAMP(a, min, max) \
-  (a) < (min) ? (min) : (a) > (max) ? (max) : (a)
+LILIUM_MALLOC(float, fast_grass_new_float_array)
+LILIUM_MALLOC(int32_t, fast_grass_new_int32_array)
+LILIUM_MALLOC(uint8_t, fast_grass_new_uint8_array)
 
-#define FAST_GRASS_MALLOC(T, name) \
-  T* name(int32_t num_elements) { \
-    T* data = (T*) malloc(num_elements * sizeof(T)); \
-    memset(data, 0, num_elements * sizeof(T)); \
-    return data; \
-  } \
-
-#define FAST_GRASS_FREE(T, name) \
-  void name(T* data) { \
-    free(data); \
-  } \
-
-FAST_GRASS_MALLOC(float, fast_grass_new_float_array)
-FAST_GRASS_MALLOC(int32_t, fast_grass_new_int32_array)
-FAST_GRASS_MALLOC(uint8_t, fast_grass_new_uint8_array)
-
-FAST_GRASS_FREE(float, fast_grass_free_float_array)
-FAST_GRASS_FREE(int32_t, fast_grass_free_int32_array)
-FAST_GRASS_FREE(uint8_t, fast_grass_free_uint8_array)
-
-void fast_grass_float_array_to_uint8_array(float* source, uint8_t* dest, int32_t size) {
-  for (int32_t i = 0; i < size; i++) {
-    dest[i] = (uint8_t)(255.0f * source[i]);
-  }
-}
+LILIUM_FREE(float, fast_grass_free_float_array)
+LILIUM_FREE(int32_t, fast_grass_free_int32_array)
+LILIUM_FREE(uint8_t, fast_grass_free_uint8_array)
 
 void fast_grass_update_wind(uint8_t* restrict wind_texture, uint8_t* restrict velocity_texture, const uint8_t* restrict noise, int32_t* restrict noise_indices, int32_t num_pixels, int32_t num_samples, float wind_vx, float wind_vz, float decay_amt) {
   const uint8_t vx = (uint8_t)((wind_vx + 1.0f) * 0.5f * 255.0f);
@@ -56,14 +37,14 @@ void fast_grass_update_velocity_displacement(uint8_t* restrict velocity_texture,
   float scaled_x = player_width * scale_x / max_dim;
   float scaled_z = player_depth * scale_z / max_dim;
 
-  float frac_width = FAST_GRASS_CLAMP(scaled_x, 0.0f, 1.0f);
-  float frac_depth = FAST_GRASS_CLAMP(scaled_z, 0.0f, 1.0f);
+  float frac_width = LILIUM_CLAMP(scaled_x, 0.0f, 1.0f);
+  float frac_depth = LILIUM_CLAMP(scaled_z, 0.0f, 1.0f);
 
   float min_x = frac_loc_x - frac_width/2.0f;
   float min_z = frac_loc_z - frac_depth/2.0f;
 
-  min_x = FAST_GRASS_CLAMP(min_x, 0.0f, 1.0f);
-  min_z = FAST_GRASS_CLAMP(min_z, 0.0f, 1.0f);
+  min_x = LILIUM_CLAMP(min_x, 0.0f, 1.0f);
+  min_z = LILIUM_CLAMP(min_z, 0.0f, 1.0f);
 
   float f_texture_size = (float)texture_size;
 

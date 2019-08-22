@@ -76,6 +76,7 @@ function drawSequence(ctx: CanvasRenderingContext2D, sequenceListener: audio.Seq
 }
 
 class SequenceModel {
+  private readonly enabled = false;
   private renderContext: wgl.RenderContext;
   private renderer: wgl.Renderer;
   private model: wgl.Model;
@@ -176,6 +177,10 @@ class SequenceModel {
   }
 
   private fillTextureData(): void {
+    if (!this.enabled) {
+      return;
+    }
+
     const pushed = this.renderContext.pushActiveTexture2DAndBind(this.texture);
     const imgData = this.canvasContext.getImageData(0, 0, this.canvas.width, this.canvas.height);
 
@@ -410,7 +415,8 @@ const GAME: Game = {
   airParticleOptions: {
     numParticles: 1000, 
     particleGridScale: 10,
-    particleScale: 0.0075
+    particleScale: 0.0075,
+    tryUseWasm: true
   },
   grassTileOptions: {
     density: 0.1,
@@ -690,7 +696,7 @@ function gameLoop(renderer: wgl.Renderer, renderContext: wgl.RenderContext, audi
   game.worldGrid.gridDrawable.updateNewCells();
   game.worldGrid.gridDrawable.draw(view, proj, camera.position, GAME.scene);
 
-  game.grassComponent.updateWasm(dt, playerAabb);
+  game.grassComponent.update(dt, playerAabb);
   game.airParticleComponent.update(dt, playerAabb);
 
   const sunPos = game.sunPosition;
@@ -784,10 +790,10 @@ export async function main(): Promise<void> {
   const gridComponent = makeWorldGrid(renderContext);
   const gridManipulator = new WorldGridManipulator(gridComponent, GAME.mousePicker);
 
-  const airParticleResources = new AirParticleResources(5e3, '/sound/wind-a-short2.aac');
+  const airParticleResources = new AirParticleResources(5e3, '/sound/wind-a-short2.aac', wasm.airParticles.makeMemory());
   await airParticleResources.load(audioContext, err => console.log(err));
 
-  const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource);
+  const airParticles = new AirParticles(renderContext, airParticleResources.noiseSource, airParticleResources.wasmModule);
   airParticles.create(GAME.airParticleOptions);
 
   const grassResources = new GrassResources(5e3, '/sound/lf_noise_short.m4a', wasm.grass.makeMemory());
