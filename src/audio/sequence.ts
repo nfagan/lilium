@@ -1,13 +1,5 @@
 import { Scheduler } from './scheduler';
-import { Note, ScheduledNote, NoteOnFunction, TimeSignature, copyTimeSignature } from './types';
-
-function makeScheduledNote(relativeStartTime: number, note: Note): ScheduledNote {
-  return {relativeStartTime, ...note};
-}
-
-function copyScheduledNote(note: ScheduledNote): ScheduledNote {
-  return {...note};
-}
+import { Note, ScheduledNote, NoteOnFunction, TimeSignature, copyTimeSignature, makeScheduledNote, copyScheduledNote } from './types';
 
 export class Measure {
   readonly timeSignature: TimeSignature;
@@ -36,7 +28,7 @@ export class Measure {
 
   addNote(relativeStartTime: number, note: Note): void {
     relativeStartTime = Math.max(0, Math.min(1, relativeStartTime));
-    this.notes.push(makeScheduledNote(relativeStartTime, note));
+    this.notes.push(makeScheduledNote(relativeStartTime, -1, note));
     this.notes.sort((a, b) => a.relativeStartTime - b.relativeStartTime);
   }
 
@@ -129,8 +121,8 @@ export class Sequence {
   loop: boolean;
   allowRecord: boolean;
 
-  onBeforeSchedule: Array<(seq: Sequence, nextStartTime: number) => void>;
-
+  private onBeforeSchedule: Array<(seq: Sequence, nextStartTime: number) => void>;
+  private onAfterSchedule: Array<(seq: Sequence) => void>;
   private measureOffset: number;
   private reportedNumMeasures: number;
   private hasSubsection: boolean;
@@ -143,10 +135,11 @@ export class Sequence {
     this.id = Sequence.ID++;
     this.loop = false;
     this.allowRecord = false;
-    this.onBeforeSchedule = [];
     this.measureOffset = 0;
     this.reportedNumMeasures = 0;
     this.hasSubsection = false;
+    this.onBeforeSchedule = [];
+    this.onAfterSchedule = [];
   }
 
   getMeasures(): Array<Measure> {
@@ -192,6 +185,20 @@ export class Sequence {
 
   addBeforeScheduleTask(task: (seq: Sequence, nextStartTime: number) => void): void {
     this.onBeforeSchedule.push(task);
+  }
+
+  addAfterScheduleTask(task: (seq: Sequence) => void): void {
+    this.onAfterSchedule.push(task);
+  }
+
+  triggerAfterScheduleTasks(): void {
+    for (let i = 0; i < this.onAfterSchedule.length; i++) {
+      this.onAfterSchedule[i](this);
+    }
+  }
+
+  clearAfterScheduleTasks(): void {
+    this.onAfterSchedule = [];
   }
 
   countNotes(): number {
@@ -588,7 +595,7 @@ export class SequenceNoteOnListener {
       if (note1 > note0) {
         return 1;
       } else {
-        numerator = rel + numMeasures - note0;
+        numerator = rel + this.sequence.numMeasures() - note0;
       }
     } else {
       numerator = rel - note0;

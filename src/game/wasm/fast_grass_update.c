@@ -57,8 +57,8 @@ void fast_grass_update_velocity_displacement(uint8_t* restrict velocity_texture,
   float mid_pixel_x = (min_x + frac_width/2.0f) * f_texture_size;
   float mid_pixel_z = (min_z + frac_depth/2.0f) * f_texture_size;
 
-  float out_of_bounds_xz = frac_loc_x > 1.0f || frac_loc_x < 0.0f || frac_loc_z > 1.0f || frac_loc_z < 0.0f;
-  float out_of_bounds_y = player_y < 0.0f || player_y > blade_height;
+  const int out_of_bounds_xz = frac_loc_x > 1.0f || frac_loc_x < 0.0f || frac_loc_z > 1.0f || frac_loc_z < 0.0f;
+  const int out_of_bounds_y = player_y < 0.0f || player_y > blade_height;
 
   if (out_of_bounds_xz || out_of_bounds_y) {
     num_pixels_x = 0;

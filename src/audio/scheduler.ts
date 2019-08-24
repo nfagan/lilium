@@ -455,6 +455,8 @@ export class Scheduler {
       measureOffsetSecs += measureDuration;
     }
 
+    sequence.triggerAfterScheduleTasks();
+
     this.scheduledSequences.push({
       sequence,
       cancelFunctions,

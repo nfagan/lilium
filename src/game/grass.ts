@@ -464,10 +464,6 @@ function makeWindTexture(gl: WebGLRenderingContext, textureData: Uint8Array, tex
   tex.bind();
   tex.configure();
 
-  // const numComponentsPerPixel = tex.numComponentsPerPixel();
-  // const numTexturePixels = textureSize * textureSize;
-  // const textureData = new Uint8Array(numTexturePixels * numComponentsPerPixel);
-
   tex.fillImage(textureData);
   tex.data = textureData;
 
@@ -491,10 +487,6 @@ function makeVelocityTexture(gl: WebGLRenderingContext, textureData: Uint8Array,
 
   tex.bind();
   tex.configure();
-  
-  // const numTexturePixels = textureSize * textureSize;
-  // const numComponentsPerPixel = tex.numComponentsPerPixel();
-  // const textureData = new Uint8Array(numTexturePixels * numComponentsPerPixel);
 
   tex.fillImage(textureData);
   tex.data = textureData;

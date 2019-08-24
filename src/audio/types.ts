@@ -44,7 +44,8 @@ export type Note = {
 }
 
 export type ScheduledNote = Note & {
-  relativeStartTime: number
+  relativeStartTime: number,
+  startTime: number
 };
 
 export function copyNote(note: Note): Note {
@@ -53,6 +54,14 @@ export function copyNote(note: Note): Note {
 
 export function makeNote(semitone: number, durationSecs: number = 0): Note {
   return {semitone, durationSecs};
+}
+
+export function makeScheduledNote(relativeStartTime: number, startTime: number, note: Note): ScheduledNote {
+  return {relativeStartTime, startTime, semitone: note.semitone, durationSecs: note.durationSecs};
+}
+
+export function copyScheduledNote(note: ScheduledNote): ScheduledNote {
+  return {...note};
 }
 
 export type NoteCancelFunction = () => void;

@@ -1,3 +1,4 @@
+import * as debug from './debug';
 import * as types from './types';
 import * as util from './util';
 
@@ -7,4 +8,4 @@ export * from './scheduler';
 export * from './sequence';
 export * from './synth';
 export * from './effects';
-export { types, util };
+export { debug, types, util };

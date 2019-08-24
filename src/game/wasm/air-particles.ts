@@ -1,6 +1,7 @@
 //  @ts-ignore
 import * as ModuleLoader from '../../../../dist/res/wasm/air-particles.js';
 import { defaultLocateFileFunction } from './util';
+import * as types from './types';
 
 export type AirParticlesModule = WebAssembly.Module & {
   _update: (translationsPtr: number, offsetPtr: number, rotPtr: number, alphaPtr: number, alphaSignPtr: number, numParticles: number, noisePtr: number, 
@@ -23,10 +24,10 @@ export function makeMemory(): WebAssembly.Memory {
 
 export async function loadModule(memory: WebAssembly.Memory): Promise<AirParticlesModule> {
   return new Promise((resolve, reject) => {
-    const options = {
+    const options: types.WasmModuleLoadOptions = {
       wasmMemory: memory,
       locateFile: defaultLocateFileFunction
-    }
+    };
 
     ModuleLoader(options).then((mod: any) => {
       resolve({

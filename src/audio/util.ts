@@ -24,8 +24,13 @@ export function exponentialRampToValueAtTime(param: AudioParam): (a: number, t: 
   return (a, t) => param.exponentialRampToValueAtTime(a, t);
 }
 
+export function minGain(): number {
+  return clampGain(0);
+}
+
 export function clampGain(t: number): number {
-  return clamp(t, 0.01, 0.99);
+  return clamp(t, 0.0001, 0.9999);
+  // return clamp(t, 0, 1);
 }
 
 export function clamp(t: number, min: number, max: number): number {
