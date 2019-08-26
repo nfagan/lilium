@@ -127,6 +127,17 @@ export class Program {
     this.gl.uniform1f(loc, x);
   }
 
+  set2f(name: string, x: number, y: number): void {
+    const loc = this.getUniformLocation(name);
+
+    if (loc === null) {
+      console.warn(`Unrecognized uniform "${name}".`);
+      return;
+    }
+
+    this.gl.uniform2f(loc, x, y);
+  }
+
   set1i(name: string, x: number): void {
     const loc = this.getUniformLocation(name);
 

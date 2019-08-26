@@ -25,12 +25,14 @@ export class Button {
     return pressed;
   }
 
-  static bindToKey(keyboard: Keyboard, key: number, listenerId: string): Button {
+  static bindToKey(keyboard: Keyboard, key: number, listenerId?: string): Button {
     const button = new Button();
     
-    keyboard.addListener(key, listenerId, () => {
-      button.press();
-    });
+    if (listenerId !== undefined) {
+      keyboard.addListener(key, listenerId, () => button.press());
+    } else {
+      keyboard.addAnonymousListener(key, () => button.press());
+    }
 
     return button;
   }

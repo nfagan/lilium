@@ -7,6 +7,14 @@ export function getBufferSourceNodeChannelData(bufferSource: AudioBufferSourceNo
   return buffer.getChannelData(channel);
 }
 
+export function makeWhiteNoiseIndices(out: BuiltinRealArray, numElementsInIndexedData: number): void {
+  const numIndices = out.length;
+
+  for (let i = 0; i < numIndices; i++) {
+    out[i] = Math.floor((numElementsInIndexedData-1) * Math.random());
+  }
+}
+
 export function makeRandomizedIndices(out: BuiltinRealArray, numElementsInIndexedData: number): void {
   const gr = math.goldenRatio();
   const numIndices = out.length;

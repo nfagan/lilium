@@ -160,7 +160,7 @@ export class Texture2D implements TextureBase {
     }
   }
 
-  static linearRepeatRGBA(gl: WebGLRenderingContext): Texture2D {
+  static linearRepeatRGBA(gl: WebGLRenderingContext, size?: number): Texture2D {
     const tex = new Texture2D(gl);
 
     tex.minFilter = gl.LINEAR;
@@ -172,6 +172,66 @@ export class Texture2D implements TextureBase {
     tex.srcType = gl.UNSIGNED_BYTE;
     tex.level = 0;
     tex.border = 0;
+
+    if (size !== undefined) {
+      tex.width = size;
+      tex.height = size;
+    }
+
+    return tex;
+  }
+
+  static linearRepeatAlpha(gl: WebGLRenderingContext, size: number): Texture2D {
+    const tex = new Texture2D(gl);
+
+    tex.minFilter = gl.LINEAR;
+    tex.magFilter = gl.LINEAR;
+    tex.wrapS = gl.REPEAT;
+    tex.wrapT = gl.REPEAT;
+    tex.internalFormat = gl.ALPHA;
+    tex.srcFormat = gl.ALPHA;
+    tex.srcType = gl.UNSIGNED_BYTE;
+    tex.level = 0;
+    tex.border = 0;
+
+    tex.width = size;
+    tex.height = size;
+
+    return tex;
+  }
+
+  static nearestEdgeClampedRGBA(gl: WebGLRenderingContext, size: number): Texture2D {
+    const tex = new Texture2D(gl);
+
+    tex.minFilter = gl.NEAREST;
+    tex.magFilter = gl.NEAREST;
+    tex.wrapS = gl.CLAMP_TO_EDGE;
+    tex.wrapT = gl.CLAMP_TO_EDGE;
+    tex.level = 0;
+    tex.internalFormat = gl.RGBA;
+    tex.width = size;
+    tex.height = size;
+    tex.border = 0;
+    tex.srcFormat = gl.RGBA;
+    tex.srcType = gl.UNSIGNED_BYTE;
+
+    return tex;
+  }
+
+  static nearestEdgeClampedAlpha(gl: WebGLRenderingContext, size: number): Texture2D {
+    const tex = new Texture2D(gl);
+
+    tex.minFilter = gl.NEAREST;
+    tex.magFilter = gl.NEAREST;
+    tex.wrapS = gl.CLAMP_TO_EDGE;
+    tex.wrapT = gl.CLAMP_TO_EDGE;
+    tex.level = 0;
+    tex.internalFormat = gl.ALPHA;
+    tex.width = size;
+    tex.height = size;
+    tex.border = 0;
+    tex.srcFormat = gl.ALPHA;
+    tex.srcType = gl.UNSIGNED_BYTE;
 
     return tex;
   }

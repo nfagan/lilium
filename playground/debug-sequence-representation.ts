@@ -352,8 +352,6 @@ class SequenceModel {
   }
 }
 
-const IS_FULLSCREEN = false;
-
 type Sounds = {
   piano: AudioBuffer,
   hat: AudioBuffer
@@ -390,7 +388,8 @@ type Game = {
   grassTextureOptions: GrassTextureOptions,
   imageQualityManager: ImageQualityManager,
   scene: wgl.Scene,
-  sequenceAggregate: SequenceAggregate
+  sequenceAggregate: SequenceAggregate,
+  isFullscreen: boolean
 };
 
 const GAME: Game = {
@@ -429,7 +428,8 @@ const GAME: Game = {
   grassTextureOptions: {textureSize: 256, tryUseWasm: true},
   imageQualityManager: new ImageQualityManager(ImageQuality.Medium),
   scene: new wgl.Scene(),
-  sequenceAggregate: null
+  sequenceAggregate: null,
+  isFullscreen: true
 };
 
 type SequenceAggregate = {
@@ -718,7 +718,7 @@ function fatalError(cause: string): FatalError {
 function makeCanvasContainer(): HTMLElement {
   let makeElement: () => HTMLElement;
 
-  if (IS_FULLSCREEN) {
+  if (GAME.isFullscreen) {
     makeElement = () => document.body;
   } else {
     makeElement = () => {
