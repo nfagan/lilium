@@ -4,6 +4,7 @@ import * as collision from './collision';
 import * as math from './math';
 import * as debug from './debug';
 import * as parse from './parsers';
+import * as terrain from './terrain';
 import * as geometry from './geometry';
 import * as shaderBuilder from './shader-builder';
 import * as factory from './factory';
@@ -36,5 +37,6 @@ export {
   MousePicker,
   parse,
   shaderBuilder,
+  terrain,
   types
 };

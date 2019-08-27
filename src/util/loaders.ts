@@ -1,3 +1,6 @@
+import { Image } from './image';
+import { NumericComponent } from './types';
+
 export async function loadText(url: string): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -27,6 +30,28 @@ export async function loadImage(url: string): Promise<HTMLImageElement> {
     img.onerror = err => reject(err);
     img.src = url;
   });
+}
+
+let canvas: HTMLCanvasElement = null;
+let canvasContext: CanvasRenderingContext2D = null;
+
+export async function loadImageObject(url: string): Promise<Image> {
+  const imageElement = await loadImage(url);
+
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvasContext = canvas.getContext('2d');
+  }
+
+  canvas.width = imageElement.width;
+  canvas.height = imageElement.height;
+  canvasContext.drawImage(imageElement, 0, 0);
+
+  const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+  const outData = new Uint8Array(imageData.data.length);
+  outData.set(imageData.data);
+  
+  return new Image(outData, canvas.width, canvas.height, 4, NumericComponent.Uint8);
 }
 
 export async function loadAudioBuffer(audioContext: AudioContext, url: string): Promise<AudioBuffer> {

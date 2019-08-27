@@ -831,7 +831,7 @@ export namespace DrawFunctions {
       drawable.type, drawable.offset, drawable.numActiveInstances);
   }
 
-  export function indexedArrays(rc: RenderContext, drawable: Drawable): void {
+  export function arraysInstanced(rc: RenderContext, drawable: Drawable): void {
     rc.extInstancedArrays.drawArraysInstancedANGLE(drawable.mode, drawable.offset,
       drawable.count, drawable.numActiveInstances);
   }

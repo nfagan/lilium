@@ -1,3 +1,14 @@
+export const enum NumericComponent {
+  Float32,
+  Float64,
+  Uint8,
+  Uint16,
+  Uint32,
+  Int8,
+  Int16,
+  Int32
+};
+
 export type PrimitiveTypedArray = 
   Float32Array |
   Float64Array |
