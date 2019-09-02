@@ -28,7 +28,8 @@ type TerrainGrassDrawableOptions = {
   grassDensity: number,
   riseFactor?: number,
   decayFactor?: number,
-  isBillboarded: boolean
+  isBillboarded: boolean,
+  numBladeSegments?: number
 }
 
 type TerrainInfo = {
@@ -40,7 +41,7 @@ type TerrainInfo = {
 
 class TerrainGrassDrawable {
   private renderContext: wgl.RenderContext;
-  private readonly numSegments = 3;
+  private readonly numSegments: number;
   private readonly numBladesPerDim: number;
   private readonly numBlades: number;
   private readonly bladeScale: Array<number>;
@@ -53,9 +54,7 @@ class TerrainGrassDrawable {
   private frustumGrid: FrustumGrid;
   private frustumGridTexture: wgl.Texture2D;
 
-  private rotations: Float32Array;
-  private translations: Float32Array;
-  private frustumGridUv: Float32Array;
+  private instanceData: Float32Array;
 
   private program: wgl.Program;
   private drawable: wgl.types.Drawable;
@@ -69,6 +68,7 @@ class TerrainGrassDrawable {
     this.gridOffsetZ = options.gridOffsetZ;
     this.gridScale = options.gridScale;
     this.bladeScale = options.bladeScale.slice();
+    this.numSegments = options.numBladeSegments === undefined ? 3 : options.numBladeSegments;
 
     this.renderContext = renderContext;
     this.terrainInfo = terrainInfo;
@@ -128,20 +128,22 @@ class TerrainGrassDrawable {
   }
 
   private createInstanceData(): void {
-    this.frustumGridUv = new Float32Array(this.numBlades*2);
-    this.translations = new Float32Array(this.numBlades*2);
-    this.rotations = new Float32Array(this.numBlades);
+    const numUv = 2;
+    const numTrans = 2;
+    const numRot = 1;
+
+    this.instanceData = new Float32Array(this.numBlades * (numUv + numTrans + numRot));
   }
 
   private initializeInstanceData(): void {
     for (let i = 0; i < this.numBlades; i++) {
-      this.rotations[i] = Math.random() * Math.PI;
+      this.instanceData[i*5] =  Math.random();
+      this.instanceData[i*5+1] = Math.random();
 
-      this.translations[i*2] = Math.random();
-      this.translations[i*2+1] = Math.random();
+      this.instanceData[i*5+2] = Math.random();
+      this.instanceData[i*5+3] = Math.random();
 
-      this.frustumGridUv[i*2] = Math.random();
-      this.frustumGridUv[i*2+1] = Math.random();
+      this.instanceData[i*5+4] = Math.random() * Math.PI;
     }
   }
 
@@ -155,9 +157,11 @@ class TerrainGrassDrawable {
 
     const vboDescriptors: Array<wgl.types.VboDescriptor> = [
       {name: 'position', attributes: [wgl.types.makeAttribute('a_position', gl.FLOAT, 3, 0)], data: positions},
-      {name: 'translation', attributes: [wgl.types.makeAttribute('a_translation', gl.FLOAT, 2, 1)], data: this.translations},
-      {name: 'grid_uv', attributes: [wgl.types.makeAttribute('a_frustum_grid_uv', gl.FLOAT, 2, 1)], data: this.frustumGridUv},
-      {name: 'rotation', attributes: [wgl.types.makeAttribute('a_rotation', gl.FLOAT, 1, 1)], data: this.rotations}
+      {name: 'instanceData', attributes: [
+        wgl.types.makeAttribute('a_translation', gl.FLOAT, 2, 1),
+        wgl.types.makeAttribute('a_frustum_grid_uv', gl.FLOAT, 2, 1),
+        wgl.types.makeAttribute('a_rotation', gl.FLOAT, 1, 1),
+      ], data: this.instanceData},
     ];
 
     const vao = wgl.Vao.fromDescriptors(gl, prog, vboDescriptors);
@@ -660,6 +664,8 @@ class Game {
   private render(view: mat4, proj: mat4): void {
     wgl.debug.beginRender(this.renderContext.gl, this.camera, game.getDpr(this.imageQuality));
     this.renderer.render(this.scene, this.camera, view, proj);
+
+    console.log(this.renderContext.gl.canvas.width, this.renderContext.gl.canvas.height);
 
     this.terrainDrawable.render(view, proj, this.camera, this.playerPosition, this.sunPosition, this.sunColor);
 
