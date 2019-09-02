@@ -39,11 +39,13 @@ function makeSkyTexture(gl: WebGLRenderingContext, img: HTMLImageElement): Textu
 
 export class SkyDomeDrawable {
   model: Model;
+  modelColorTexture: Texture2D;
 
   private isCreated: boolean;
 
   constructor() {
     this.model = null;
+    this.modelColorTexture = null;
     this.isCreated = false;
   }
 
@@ -51,6 +53,7 @@ export class SkyDomeDrawable {
     if (this.isCreated) {
       this.model.drawable.vao.dispose();
       this.model = null;
+      this.modelColorTexture = null;
     }
     this.isCreated = false;
   }
@@ -64,7 +67,9 @@ export class SkyDomeDrawable {
     const mat = Material.NoLight();
 
     if (resources.skyImage) {
-      mat.setUniformProperty('modelColor', makeSkyTexture(gl, resources.skyImage));
+      const modelColorTexture = makeSkyTexture(gl, resources.skyImage);
+      mat.setUniformProperty('modelColor', modelColorTexture);
+      this.modelColorTexture = modelColorTexture;
     } else {
       mat.setUniformProperty('modelColor', [1, 1, 1]);
     }

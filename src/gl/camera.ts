@@ -15,6 +15,9 @@ export interface ICamera {
   setNear(near: number): void;
   setFar(far: number): void;
 
+  getFieldOfView(): number;
+
+  getFrontXz(out: types.Real3): void;
   getFront(out: types.Real3): void;
   getRight(out: types.Real3): void;
 }

@@ -143,7 +143,7 @@ class Game {
   }
 
   private async makeTerrain(): Promise<void> {
-    const image = await util.loadImageObject('/texture/sphere-heightmap.png');
+    const image = await util.loadImageObject('/texture/sphere-heightmap2.png');
     const heightMap = new wgl.terrain.ImageHeightMap(image);
     this.terrainHeightMap = heightMap;
     this.terrainQuad = new TerrainQuad(this.renderContext, this.renderer);
@@ -220,6 +220,7 @@ class Game {
 
     const fracX = this.playerAabb.midX() / this.grassBlade.getGridScale();
     const fracZ = this.playerAabb.midZ() / this.grassBlade.getGridScale();
+    //  Flipped
     const y = this.terrainHeightMap.normalizedValueAtNormalizedXz(fracX, fracZ) * this.terrainHeightScale;
     
     this.playerAabb.moveToY(y);

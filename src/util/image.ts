@@ -1,13 +1,13 @@
-import { BuiltinRealArray, NumericComponent } from './types';
+import { PrimitiveTypedArray, NumericComponent } from './types';
 
 export class Image {
-  readonly data: BuiltinRealArray;
+  readonly data: PrimitiveTypedArray;
   readonly width: number;
   readonly height: number;
   readonly numComponents: number;
   readonly componentType: NumericComponent;
 
-  constructor(data: BuiltinRealArray, width: number, height: number, numComponents: number, componentType: NumericComponent) {
+  constructor(data: PrimitiveTypedArray, width: number, height: number, numComponents: number, componentType: NumericComponent) {
     const numPixels = width * height * numComponents;
 
     if (numPixels !== data.length) {

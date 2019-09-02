@@ -65,8 +65,18 @@ export class FollowCamera implements ICamera {
     vec3.add(pos, targ, tmpVec);
   }
 
+  getFieldOfView(): number {
+    return this.fieldOfView;
+  }
+
   getFront(out: types.Real3): void {
     math.sub3(out, this.position, this.target);
+    math.norm3(out, out);
+  }
+
+  getFrontXz(out: types.Real3): void {
+    this.getFront(out);
+    out[1] = 0;
     math.norm3(out, out);
   }
 

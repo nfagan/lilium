@@ -158,3 +158,47 @@ export function sphereInterleavedDataAndIndices(vertexCount: number = 64): {vert
     indices: new Uint16Array(indices)
   };
 }
+
+export function triangleStripQuadPositions(vertexCount: number = 64): {vertexData: Float32Array, indices: Uint16Array} {
+  const vertexData = new Float32Array(vertexCount * vertexCount * 3);
+  let index = 0;
+
+  for (let i = 0; i < vertexCount; i++) {
+    for (let j = 0; j < vertexCount; j++) {
+      let xSegment = j / (vertexCount-1);
+      let ZSegment = i / (vertexCount-1);
+
+      vertexData[index++] = xSegment;
+      vertexData[index++] = 0;
+      vertexData[index++] = ZSegment;
+    }
+  }
+
+  let firstIndex = 0;
+  let nextIndex = vertexCount;
+  let indexStp = 0;
+  let shouldProceed = true;
+  let indices: Array<number> = [];
+
+  while (shouldProceed) {
+    indices.push(firstIndex);
+    indices.push(nextIndex);
+    indexStp += 2;
+
+    shouldProceed = nextIndex != (vertexCount * vertexCount) - 1;
+
+    if (indexStp > 0 && (nextIndex+1) % vertexCount == 0 && shouldProceed) {
+      indices.push(nextIndex);
+      indices.push(firstIndex+1);
+      indexStp += 2;
+    }
+
+    firstIndex++;
+    nextIndex++;
+  }
+
+  return {
+    vertexData,
+    indices: new Uint16Array(indices)
+  };
+}

@@ -4,6 +4,9 @@
 
 // import { main } from '../playground/debug-synth';
 
-import { main } from '../playground/debug-grass-again';
+// import { main } from '../playground/debug-grass-again';
+import { main } from '../playground/debug-terrain4';
+// import { main } from '../playground/debug-frustum-grid';
+
 
 main();

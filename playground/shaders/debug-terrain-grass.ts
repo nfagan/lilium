@@ -4,26 +4,26 @@ attribute vec3 a_position;
 attribute vec3 a_translation;
 attribute float a_rotation;
 
-#define USE_WIND 1
+#define USE_HEIGHTMAP 1
 
 varying float v_y;
 varying vec3 v_position;
-varying float v_noise;
 
 uniform mat4 view;
 uniform mat4 projection;
 
 uniform vec3 blade_scale;
-uniform float grid_scale;
 uniform vec3 world_position;
 
-uniform vec3 local_movement_direction;
-uniform float local_movement_amount;
-uniform float wind_amount;
+uniform sampler2D cell_offset_map;
 
-uniform sampler2D wind_texture;
-uniform sampler2D local_movement_texture;
-uniform sampler2D displacement_texture;
+#if USE_HEIGHTMAP
+uniform sampler2D height_map;
+uniform vec2 grid_scale;
+uniform float terrain_grid_scale;
+uniform float grid_cell_dim;
+uniform float height_scale;
+#endif
 
 mat3 make_scale_matrix() {
   float ct = cos(a_rotation);
@@ -56,37 +56,35 @@ void main() {
   float y3 = y * y * y;
   float taper_amount = -(y3 * sign(x));
 
-  //  Texture coords
-  vec2 grid_position = a_translation.xz / grid_scale;
+  vec3 translation = a_translation;
 
-  //  Local noise
-  float noise_amount = texture2D(local_movement_texture, grid_position).a * -0.25;
-  float sample_noise = noise_amount * a_rotation / 3.141592653589793;
+  vec2 grid_relative_translation = translation.xz / grid_scale;
+  vec2 grid_offsets = texture2D(cell_offset_map, grid_relative_translation).xz;
+
+  vec2 cell_index = floor(grid_relative_translation * grid_cell_dim);
+  vec2 cell_relative_translation = (translation.xz - (cell_index * (grid_scale / grid_cell_dim)));
+
+  translation.xz = grid_offsets + cell_relative_translation;
+  // translation.xz += grid_offsets;
+
+#if USE_HEIGHTMAP
+  vec2 uv = translation.xz / terrain_grid_scale;
+  uv.y = 1.0 - uv.y;
+  float height = texture2D(height_map, uv).r * height_scale;
+#else
+  float height = 0.0;
+#endif
   
   //  Taper in the blade
   vec3 position = a_position;
   position.x += taper_amount;
 
   //  Apply "model" matrix
-  vec3 tmp_position = make_scale_matrix() * position + a_translation + world_position;
-
-  //  Local movement
-  tmp_position += local_movement_direction * noise_amount * y * local_movement_amount;
-
-#if USE_WIND
-  //  Wind movement
-  float sampled_wind = texture2D(wind_texture, grid_position).z;
-  tmp_position.z += ((sampled_wind - 0.5) * 2.0) * y * sample_noise * 4.0 * wind_amount;
-#endif
-
-  //  Player displacement
-  vec4 sampled_displacement = texture2D(displacement_texture, grid_position);
-  vec3 sampled_direction = normalize(sampled_displacement.xyz * 2.0 - 1.0);
-  tmp_position.xz += sampled_direction.xz * y * sampled_displacement.w;
+  vec3 tmp_position = make_scale_matrix() * position + translation + world_position;
+  tmp_position.y += height;
 
   v_y = y;
   v_position = tmp_position;
-  v_noise = sample_noise;
 
   gl_Position = projection * view * vec4(tmp_position, 1.0);
 }
@@ -97,7 +95,6 @@ precision highp float;
 
 varying float v_y;
 varying vec3 v_position;
-varying float v_noise;
 
 uniform vec3 color;
 uniform vec3 sun_position;
@@ -126,7 +123,7 @@ void main() {
 
   vec3 sun_contrib = vec3(0.0);
   sun_contrib = directional_light(sun_position, sun_color, pow(v_y, 1.5));
-  tmp_color += sun_contrib * 0.5;
+  // tmp_color += sun_contrib * 0.5;
 
   gl_FragColor = vec4(tmp_color, 1.0);
 }

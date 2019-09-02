@@ -6,6 +6,7 @@ export class RenderContext {
   gl: WebGLRenderingContext;
   extInstancedArrays: ANGLE_instanced_arrays;
   extOesVao: OES_vertex_array_object;
+  extOesTextureFloat: OES_texture_float;
 
   private boundVao: Vao;
   private boundVbo: Vbo;
@@ -85,7 +86,8 @@ export class RenderContext {
   private getExtensions(gl: WebGLRenderingContext): void {
     const namesProperties: Array<{name: string, property: string}> = [
       {name: 'ANGLE_instanced_arrays', property: 'extInstancedArrays'},
-      {name: 'OES_vertex_array_object', property: 'extOesVao'}
+      {name: 'OES_vertex_array_object', property: 'extOesVao'},
+      {name: 'OES_texture_float', property: 'extOesTextureFloat'}
     ];
 
     const self = this;
