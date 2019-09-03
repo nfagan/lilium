@@ -1,5 +1,6 @@
 export const vertex = `
-precision highp float;
+precision mediump float;
+
 attribute vec3 a_position;
 attribute vec2 a_translation;
 attribute vec2 a_frustum_grid_uv;
@@ -98,7 +99,7 @@ void main() {
 `;
 
 export const fragment = `
-precision highp float;
+precision mediump float;
 
 #define USE_FOG 1
 #define USE_HEIGHT_FACTOR_VISIBILITY 0
@@ -136,13 +137,10 @@ void main() {
 
   float y = pow(v_y, 0.25);
 
-  float color_deviation = 0.0;
-
   vec3 tmp_color = color;
-  tmp_color.g *= (y + color_deviation);
+  tmp_color.g *= y;
 
-  vec3 sun_contrib = vec3(0.0);
-  sun_contrib = directional_light(sun_position, sun_color, pow(v_y, 1.5));
+  vec3 sun_contrib = directional_light(sun_position, sun_color, pow(v_y, 1.5));
   tmp_color += sun_contrib * 0.5;
 
 #if USE_FOG

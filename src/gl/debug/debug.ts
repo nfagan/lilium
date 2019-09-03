@@ -503,6 +503,7 @@ function styleTouchElement(el: HTMLDivElement, sz: number, offsetX: number, offs
   el.style.bottom = `${offsetY * sz}px`;
   el.style.backgroundColor = color;
   el.style.opacity = '0.25';
+  el.style.zIndex = '3';
 
   if (rightJustify) {
     el.style.left = `${window.innerWidth - sz}px`;

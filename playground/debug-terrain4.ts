@@ -348,8 +348,9 @@ class Game {
   private mouseState: wgl.debug.DebugMouseState;
   private frameTimer: util.Stopwatch;
   private cameraTarget: wgl.Model;
-  private imageQuality: game.ImageQuality = game.ImageQuality.Low;
+  private imageQuality: game.ImageQuality = game.ImageQuality.High;
   private movementSpeed = 0.25;
+  private touchControlElements: wgl.debug.DebugTouchControls;
 
   private playerPosition = [0, 0, 0];
   private playerAabb: wgl.math.Aabb;
@@ -361,7 +362,7 @@ class Game {
   private terrainHeightMap: wgl.terrain.IHeightMap;
   private terrainHeightMapTexture: wgl.Texture2D;
 
-  private readonly terrainHeightScale = 10;
+  private readonly terrainHeightScale = 5;
   private readonly terrainGridScale = 200;
 
   private lowLodGrass: TerrainGrassDrawable;
@@ -551,6 +552,8 @@ class Game {
     wgl.debug.setupDocumentBody(mouseState);
     this.mouseState = mouseState;
 
+    this.touchControlElements = wgl.debug.createTouchControls(keyboard);
+
     keyboard.addAnonymousListener(wgl.Keys.space, () => {
       this.isGrassPaused = !this.isGrassPaused;
     });
@@ -562,8 +565,16 @@ class Game {
     ['top', 'left', 'right', 'bottom'].map(t => container.style[t as any] = '0');
     container.style.margin = 'auto';
 
-    const wAspect = 16;
-    const hAspect = 9;
+    let wAspect: number;
+    let hAspect: number;
+
+    if (window.innerWidth > window.innerHeight) {
+      wAspect = 16;
+      hAspect = 9;
+    } else {
+      wAspect = 1;
+      hAspect = 1;
+    }
 
     const resizer = () => {
       const w = window.innerWidth;
@@ -600,8 +611,11 @@ class Game {
     const rotationalInput = new game.input.RotationalInput();
     rotationalInput.bindToMouseMove(document.body);
     rotationalInput.bindToTouchMove(document.body);
+
+    const controller = new game.Controller(jumpButton, directionalInput, rotationalInput);
+    game.gameUtil.makeTouchControls(controller, this.touchControlElements);
     
-    return new game.Controller(jumpButton, directionalInput, rotationalInput);
+    return controller;
   }
 
   private updateCamera(dt: number): void {
@@ -665,17 +679,11 @@ class Game {
     wgl.debug.beginRender(this.renderContext.gl, this.camera, game.getDpr(this.imageQuality));
     this.renderer.render(this.scene, this.camera, view, proj);
 
-    console.log(this.renderContext.gl.canvas.width, this.renderContext.gl.canvas.height);
-
     this.terrainDrawable.render(view, proj, this.camera, this.playerPosition, this.sunPosition, this.sunColor);
 
-    // this.medLodGridGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
-    // this.highLodGridGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
-
-    // this.lowLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
-    this.medLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
-    this.highLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
     this.highestLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
+    this.highLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
+    this.medLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
   }
 
   async initialize(): Promise<void> {

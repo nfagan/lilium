@@ -115,14 +115,16 @@ export class FrustumGrid {
   private readonly inUseSubToInd: Array<Array<number>>;
 
   private availableIndices: Set<number>;
-  private lastUsedIndices: Set<number>;
-  private decayingIndices: Set<number>;
+  // private lastUsedIndices: Set<number>;
+  // private decayingIndices: Set<number>;
 
   // private readonly availableIndices: Int32Array;
   // private numAvailableIndices: number;
-  // private readonly currentUsedIndices: Int8Array;
-  // private readonly lastUsedIndices: Int8Array;
-  // private readonly decayingIndices: Int8Array;
+  // private lastAvailableIndex: number = 0;
+  // private readonly availableIndices: Int8Array;
+  private readonly currentUsedIndices: Int8Array;
+  private readonly lastUsedIndices: Int8Array;
+  private readonly decayingIndices: Int8Array;
 
   private normalX0: vec2;
   private normalX1: vec2;
@@ -166,19 +168,20 @@ export class FrustumGrid {
     this.gridScale = Math.max(farScale, nearScale, zExtent);
 
     this.inUseSubToInd = [];
-    this.lastUsedIndices = new Set();
+    // this.lastUsedIndices = new Set();
     this.availableIndices = new Set();
-    this.decayingIndices = new Set();
+    // this.decayingIndices = new Set();
 
     const numCells = this.gridDim * this.gridDim;
 
-    // this.currentUsedIndices = new Int8Array(numCells);
-    // this.lastUsedIndices = new Int8Array(numCells);
+    this.currentUsedIndices = new Int8Array(numCells);
+    this.lastUsedIndices = new Int8Array(numCells);
+    // this.availableIndices = new Int8Array(numCells);
     // this.availableIndices = new Int32Array(numCells);
-    // this.decayingIndices = new Int8Array(numCells);
-    // this.currentUsedIndices.fill(-1);
-    // this.lastUsedIndices.fill(-1);
-    // this.decayingIndices.fill(-1);
+    this.decayingIndices = new Int8Array(numCells);
+    this.currentUsedIndices.fill(-1);
+    this.lastUsedIndices.fill(-1);
+    this.decayingIndices.fill(-1);
     // this.numAvailableIndices = numCells;
 
     this.cellIndices = new Float32Array(numCells * 4);
@@ -218,7 +221,8 @@ export class FrustumGrid {
   }
 
   private makeGrid(): void {
-    this.cellColors = new Float32Array(this.gridDim * this.gridDim * 3);
+    const numCells = this.numCells();
+    this.cellColors = new Float32Array(numCells * 3);
 
     let index = 0;
 
@@ -228,6 +232,7 @@ export class FrustumGrid {
         this.cellIndices[index*4+1] = j;
         this.availableIndices.add(index);
         // this.availableIndices[index] = index;
+        // this.availableIndices[index] = 1;
         index++;
       }
     }
@@ -336,11 +341,12 @@ export class FrustumGrid {
 
     const spanX = iMaxX - iMinX;
     const spanZ = iMaxZ - iMinZ;
+    const numCells = this.numCells();
 
-    // const currentUsedIndices = this.currentUsedIndices;
-    // currentUsedIndices.fill(-1);
+    const currentUsedIndices = this.currentUsedIndices;
+    currentUsedIndices.fill(-1);
 
-    const currentUsedIndices = new Set<number>();
+    // const currentUsedIndices = new Set<number>();
 
     const availableIndices = this.availableIndices;
     const lastUsedIndices = this.lastUsedIndices;
@@ -374,15 +380,17 @@ export class FrustumGrid {
 
           if (filledValue === -1 && availableIndices.size > 0) {
           // if (filledValue === -1 && this.numAvailableIndices > 0) {
+
             const freeInd = rawAvailableIndices.next().value;
 
             availableIndices.delete(freeInd);
-            currentUsedIndices.add(freeInd);
-            decayingIndices.delete(freeInd);
+            // currentUsedIndices.add(freeInd);
+            // decayingIndices.delete(freeInd);
 
             // const freeInd = availableIndices[--this.numAvailableIndices];
-            // currentUsedIndices[freeInd] = 1;
-            // decayingIndices[freeInd] = -1;
+
+            currentUsedIndices[freeInd] = 1;
+            decayingIndices[freeInd] = -1;
 
             markFilledWith(inUseSubToInd, ix0, iz0, freeInd);
 
@@ -407,88 +415,93 @@ export class FrustumGrid {
             }
 
             this.cellIndices[filledValue*4+3] = currAlpha;
-            currentUsedIndices.add(filledValue);
-            decayingIndices.delete(filledValue);
+            // currentUsedIndices.add(filledValue);
+            // decayingIndices.delete(filledValue);
 
-            // currentUsedIndices[filledValue] = 1;
-            // decayingIndices[filledValue] = -1;
+            currentUsedIndices[filledValue] = 1;
+            decayingIndices[filledValue] = -1;
           }
         } else {
           const filledInd = getFilledWith(inUseSubToInd, ix0, iz0);
 
           if (filledInd !== -1) {
             unmarkFilled(inUseSubToInd, ix0, iz0);
-            decayingIndices.add(filledInd);
-            // decayingIndices[filledInd] = 1;
+            // decayingIndices.add(filledInd);
+            decayingIndices[filledInd] = 1;
           }
         }
       }
     }
 
-    lastUsedIndices.forEach(ind => {
-      if (!currentUsedIndices.has(ind)) {
-        const ix = this.cellIndices[ind*4];
-        const iz = this.cellIndices[ind*4+1];
-        availableIndices.add(ind);
-        decayingIndices.add(ind);
-        // this.cellIndices[ind*4+2] = 0;
-        unmarkFilled(inUseSubToInd, ix, iz);
-      }
-    });
-
-    decayingIndices.forEach(ind => {
-      let alpha = this.cellIndices[ind*4+3];
-
-      if (alpha > 0) {
-        alpha -= alphaDecay;
-      
-        if (alpha < 0) {
-          this.cellIndices[ind*4+2] = 0;
-          alpha = 0;
-          decayingIndices.delete(ind);
-        }
-
-        this.cellIndices[ind*4+3] = alpha;
-      }
-    });
-
-    this.lastUsedIndices = currentUsedIndices;
-
-    
-    // const numCells = this.numCells();
-
-    // console.log(this.numAvailableIndices);
-
-    // for (let i = 0; i < numCells; i++) {
-    //   if (lastUsedIndices[i] > 0 && currentUsedIndices[i] < 0) {
-    //     const ix = this.cellIndices[i*4];
-    //     const iz = this.cellIndices[i*4+1];
-
-    //     availableIndices[this.numAvailableIndices++] = i;
-    //     decayingIndices[i] = 1;
+    // lastUsedIndices.forEach(ind => {
+    //   if (!currentUsedIndices.has(ind)) {
+    //     const ix = this.cellIndices[ind*4];
+    //     const iz = this.cellIndices[ind*4+1];
+    //     availableIndices.add(ind);
+    //     decayingIndices.add(ind);
+    //     // this.cellIndices[ind*4+2] = 0;
     //     unmarkFilled(inUseSubToInd, ix, iz);
     //   }
-    // }
+    // });
 
-    // for (let i = 0; i < numCells; i++) {
-    //   if (decayingIndices[i] > 0) {
-    //     let alpha = this.cellIndices[i*4+3];
+    // decayingIndices.forEach(ind => {
+    //   let alpha = this.cellIndices[ind*4+3];
 
-    //     if (alpha > 0) {
-    //       alpha -= alphaDecay;
-        
-    //       if (alpha < 0) {
-    //         this.cellIndices[i*4+2] = 0;
-    //         alpha = 0;
-    //         decayingIndices[i] = -1;
-    //       }
-
-    //       this.cellIndices[i*4+3] = alpha;
+    //   if (alpha > 0) {
+    //     alpha -= alphaDecay;
+      
+    //     if (alpha < 0) {
+    //       this.cellIndices[ind*4+2] = 0;
+    //       alpha = 0;
+    //       decayingIndices.delete(ind);
     //     }
+
+    //     this.cellIndices[ind*4+3] = alpha;
     //   }
+    // });
+
+    // this.lastUsedIndices = currentUsedIndices;
+
+    for (let i = 0; i < numCells; i++) {
+      if (lastUsedIndices[i] > 0 && currentUsedIndices[i] < 0) {
+        const ix = this.cellIndices[i*4];
+        const iz = this.cellIndices[i*4+1];
+
+        // availableIndices[this.numAvailableIndices++] = i;
+        availableIndices.add(i);
+        // availableIndices[i] = 1;
+        decayingIndices[i] = 1;
+        unmarkFilled(inUseSubToInd, ix, iz);
+
+      } else if (decayingIndices[i] > 0) {
+        let alpha = this.cellIndices[i*4+3];
+
+        if (alpha > 0) {
+          alpha -= alphaDecay;
+        
+          if (alpha < 0) {
+            this.cellIndices[i*4+2] = 0;
+            alpha = 0;
+            decayingIndices[i] = -1;
+          }
+
+          this.cellIndices[i*4+3] = alpha;
+        }
+      }
+    }
+
+    // const debugSet = new Set<number>();
+    // for (let i = 0; i < this.numAvailableIndices; i++) {
+    //   if (debugSet.has(this.availableIndices[i])) {
+    //     console.log('duplicate availble: ', this.availableIndices[i]);
+    //   }
+    //   if (currentUsedIndices[i] > 0) {
+    //     console.log('Available in use: ', this.availableIndices[i]);
+    //   }
+    //   debugSet.add(this.availableIndices[i]);
     // }
 
-    // this.lastUsedIndices.set(this.currentUsedIndices);
+    lastUsedIndices.set(currentUsedIndices);
   }
 
   private renderFrustum(ctx: CanvasRenderingContext2D): void {
