@@ -895,6 +895,17 @@ export class Drawable extends DrawableBase<Drawable> {
     return drawable;
   }
 
+  static indexedInstanced(renderContext: RenderContext, vao: Vao, numIndices: number, numInstances: number): Drawable {
+    const drawFunc = DrawFunctions.indexedInstanced;
+
+    const drawable = Drawable.fromProperties(renderContext, vao, drawFunc);
+    drawable.count = numIndices;
+    drawable.numActiveInstances = numInstances;
+    drawable.isInstanced = true;
+
+    return drawable;
+  }
+
   static fromProperties(renderContext: RenderContext, vao: Vao, drawFunction: DrawFunction, mode?: number, count?: number, type?: number, offset?: number, isInstanced?: boolean, numActiveInstances?: number): Drawable {
     const drawable = new Drawable(renderContext, vao, drawFunction);
     drawable.assignPropsIfDefined(mode, count, type, offset, isInstanced, numActiveInstances);

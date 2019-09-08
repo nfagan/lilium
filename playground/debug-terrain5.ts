@@ -3,7 +3,7 @@ import * as game from '../src/game';
 import * as util from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
 import * as terrainSources from './shaders/debug-terrain';
-import * as grassSources from './shaders/debug-terrain-grass3';
+import * as grassSources from './shaders/debug-terrain-grass4';
 import { FrustumGrid } from './frustum-grid';
 
 function makeHeightMapTexture(gl: WebGLRenderingContext, heightMapImage: util.Image): wgl.Texture2D {
@@ -27,6 +27,7 @@ type TerrainGrassDrawableOptions = {
   aspectRatio: number,
   cameraFieldOfView: number,
   grassDensity: number,
+  nextGrassDensity: number,
   riseFactor?: number,
   decayFactor?: number,
   isBillboarded: boolean,
@@ -216,6 +217,7 @@ class TerrainGrassDrawable {
     this.program.setTexture('height_map', this.terrainInfo.heightMapTexture.index);
     this.program.set1f('height_scale', this.terrainInfo.heightScale);
     this.program.set1f('terrain_grid_scale', this.terrainInfo.terrainGridScale);
+    this.program.set2f('densities', this.options.grassDensity, this.options.nextGrassDensity);
 
     const camTheta = Math.atan2(-this.cameraFrontXz[2], this.cameraFrontXz[0]) + Math.PI/2;
     const camTheta2 = Math.atan2(this.cameraFrontXz[2], this.cameraFrontXz[0]) + Math.PI/2;
@@ -334,6 +336,9 @@ class TerrainDrawable {
     this.renderContext.useProgram(this.program);
     wgl.debug.setViewProjection(this.program, view, proj);
 
+    const camFront = vec3.create();
+    camera.getFrontXz(camFront);
+
     this.bindTextures();
 
     this.program.setMat4('model', this.model.transform.matrix);
@@ -346,8 +351,10 @@ class TerrainDrawable {
 
     this.program.setTexture('height_map', this.heightMapTexture.index);
     this.program.set1f('height_scale', this.heightScale);
-    this.program.set1f('far_grass_end', 100);
     // this.program.setTexture('sky_dome_texture', this.skyDomeTexture.index);
+
+    this.program.set1f('frustum_z_extent', 30);
+    this.program.set2f('camera_front_xz', -camFront[0], -camFront[2]);
 
     this.disableCullFace();
 
@@ -389,7 +396,6 @@ class Game {
 
   private medLodGrass: TerrainGrassDrawable;
   private highLodGrass: TerrainGrassDrawable;
-  private highestLodGrass: TerrainGrassDrawable;
 
   private isGrassPaused: boolean = false;
 
@@ -490,45 +496,35 @@ class Game {
     const fov = this.camera.getFieldOfView();
 
     const medLodOptions: TerrainGrassDrawableOptions = {
-      gridOffsetZ: 100,
-      gridScale: 50,
-      bladeScale: [15, 3, 1],
-      nextBladeScale: [15, 3, 1],
+      gridOffsetZ: 35,
+      gridScale: 100,
+      bladeScale: [4, 3, 1],
+      nextBladeScale: [8, 3, 1],
       frustumGridDim: 64,
       aspectRatio: this.aspectRatio(),
       cameraFieldOfView: fov,
-      grassDensity: 0.5,
+      grassDensity: 1,
+      nextGrassDensity: 1,
       riseFactor: 0.01,
-      decayFactor: 0.01,
-      isBillboarded: true
+      decayFactor: 0.05,
+      isBillboarded: true,
+      numBladeSegments: 3
     }
 
     const highLodOptions: TerrainGrassDrawableOptions = {
-      gridOffsetZ: 50,
+      gridOffsetZ: 0,
       gridScale: 50,
-      bladeScale: [1, 3, 1],
-      nextBladeScale: [1, 3, 1],
+      bladeScale: [0.3, 3, 1],
+      nextBladeScale: [2, 3, 1],
       frustumGridDim: 64,
       aspectRatio: this.aspectRatio(),
       cameraFieldOfView: fov,
-      grassDensity: 5,
+      grassDensity: 3.8,
+      nextGrassDensity: 1,
+      riseFactor: 0.05,
+      decayFactor: 0.005,
       isBillboarded: false,
-      numBladeSegments: 1,
-      riseFactor: 0.05
-    }
-
-    const highestLodOptions: TerrainGrassDrawableOptions = {
-      gridOffsetZ: 0,
-      gridScale: 50,
-      bladeScale: [0.12, 3, 1],
-      nextBladeScale: [1, 3, 1],
-      frustumGridDim: 32,
-      aspectRatio: this.aspectRatio(),
-      cameraFieldOfView: fov,
-      grassDensity: 8,
-      isBillboarded: false,
-      numBladeSegments: 3,
-      riseFactor: 0.05
+      numBladeSegments: 1
     }
 
     const terrainInfo: TerrainInfo = {
@@ -540,13 +536,13 @@ class Game {
 
     this.medLodGrass = new TerrainGrassDrawable(rc, medLodOptions, terrainInfo);
     this.highLodGrass = new TerrainGrassDrawable(rc, highLodOptions, terrainInfo);
-    this.highestLodGrass = new TerrainGrassDrawable(rc, highestLodOptions, terrainInfo);
 
     this.terrainDrawable = new TerrainDrawable(rc, heightMap, this.terrainHeightMapTexture, this.skyDome.modelColorTexture, this.skyDomeScale, gridScale, heightScale);
   }
 
   private aspectRatio(): number {
-    return this.renderContext.gl.canvas.clientWidth / this.renderContext.gl.canvas.clientHeight;
+    const canvas = this.renderContext.gl.canvas as HTMLCanvasElement;
+    return canvas.clientWidth / canvas.clientHeight;
   }
 
   private makeCamera(): wgl.FollowCamera {
@@ -692,12 +688,13 @@ class Game {
   }
 
   private render(view: mat4, proj: mat4): void {
-    wgl.debug.beginRender(this.renderContext.gl, this.camera, game.getDpr(this.imageQuality));
+    const gl = this.renderContext.gl;
+
+    wgl.debug.beginRender(gl, this.camera, game.getDpr(this.imageQuality));
     this.renderer.render(this.scene, this.camera, view, proj);
 
     this.terrainDrawable.render(view, proj, this.camera, this.playerPosition, this.sunPosition, this.sunColor);
 
-    this.highestLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
     this.highLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
     this.medLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
   }
@@ -711,7 +708,6 @@ class Game {
   private updateGrass(dt: number): void {
     this.medLodGrass.update(dt, this.camera, this.playerPosition);
     this.highLodGrass.update(dt, this.camera, this.playerPosition);
-    this.highestLodGrass.update(dt, this.camera, this.playerPosition);
   }
 
   update(): void {

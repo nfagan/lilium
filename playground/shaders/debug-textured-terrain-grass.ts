@@ -7,7 +7,8 @@ attribute vec2 a_frustum_grid_uv;
 attribute float a_rotation; 
 
 varying float v_y;
-varying float v_alpha;
+varying vec2 v_color_uv;
+varying vec2 v_uv;
 varying float v_noise;
 varying vec3 v_position;
 varying float v_discard;
@@ -22,6 +23,7 @@ uniform float camera_theta;
 
 uniform vec3 blade_scale;
 uniform vec3 next_blade_scale;
+uniform vec2 densities;
 
 uniform int is_billboarded;
 
@@ -69,6 +71,9 @@ void main() {
   float y3 = y * y * y;
   float taper_amount = -(y3 * sign(x));
 
+  vec2 true_uv = vec2((x + 1.0) * 0.5, y);
+  vec2 color_uv = a_frustum_grid_uv;
+
   float noise_amount = a_rotation / PI;
   
   //  Taper in the blade
@@ -77,23 +82,31 @@ void main() {
 
   vec4 translation_info = texture2D(frustum_grid_map, a_frustum_grid_uv);
   float alpha = clamp(translation_info.a, 0.0, 1.0);
+  // float alpha = 1.0;
 
   vec2 world_translation = translation_info.xy * frustum_grid_cell_size + frustum_grid_cell_size * a_translation;
 
   float camera_dist = length(world_translation - camera_position.xz);
-  // float height_factor = clamp(exp(-pow(camera_dist * 0.008, 1.5)), 0.0, 1.0);
-  float height_factor = 1.0;
+  float height_factor = clamp(exp(-pow(camera_dist * 0.003, 2.0)), 0.0, 1.0);
+  // float height_factor = 1.0;
 
   float rotation = is_billboarded > 0 ? camera_theta : a_rotation;
 
   vec2 world_to_camera_offset = world_translation - (camera_position.xz + camera_front_xz * frustum_z_offset);
   float frac_frustum = clamp(dot(normalize(world_to_camera_offset), camera_front_xz) * length(world_to_camera_offset) / frustum_z_extent, 0.0, 1.0);
   vec3 use_scale = blade_scale;
-  // use_scale = mix(blade_scale, next_blade_scale, frac_frustum);
+  use_scale = mix(blade_scale, next_blade_scale, pow(smoothstep(0.0, 1.0, frac_frustum), 1.0));
+
+  //  Density
+  float density_criterion = (1.0 - densities.y / densities.x) * pow(frac_frustum, 4.0);
+  float density_mask = noise_amount > density_criterion ? 1.0 : 1.0 - density_criterion - noise_amount;
+  // float density_mask = 1.0;
+
+  // position.xz += 2.0 * pow(y, 0.5) * frac_frustum;
 
   position = make_scale_matrix(use_scale, rotation) * position;
   position.xz += world_translation;
-  position.y *= alpha * height_factor;
+  position.y *= alpha * height_factor * density_mask;
 
   position.xz += camera_right_xz * sin(t * noise_amount * 2.0) * y * 0.1;
   position.xz += camera_right_xz * cos(t * noise_amount * 4.0) * y3 * 0.05;
@@ -104,15 +117,15 @@ void main() {
   position.y += height;
 
   v_y = y;
-  v_alpha = alpha;
   v_noise = noise_amount;
   v_position = position;
   v_discard = translation_info.z > 0.5 ? 100.0 : -100.0;
   v_height_factor = frac_frustum;
+  // v_color_uv = color_uv;
+  v_color_uv = uv;
+  v_uv = true_uv;
 
-  float w_component = translation_info.z > 0.5 ? 1.0 : 0.0;
-
-  gl_Position = projection * view * vec4(position, w_component);
+  gl_Position = projection * view * vec4(position, 1.0);
 }
 `;
 
@@ -123,16 +136,20 @@ precision highp float;
 #define USE_HEIGHT_FACTOR_VISIBILITY 0
 
 varying float v_y;
-varying float v_alpha;
 varying float v_noise;
 varying float v_height_factor;
 varying float v_discard;
 varying vec3 v_position;
+varying vec2 v_color_uv;
+varying vec2 v_uv;
 
 uniform vec3 color;
 uniform vec3 sun_position;
 uniform vec3 sun_color;
 uniform vec3 camera_position;
+
+uniform sampler2D terrain_color;
+uniform sampler2D blade_texture;
 
 const float kd = 0.9;
 const float ks = 0.9;
@@ -145,29 +162,21 @@ vec3 directional_light(vec3 light_position, vec3 light_color, float diff_ao) {
   float spec_strength = pow(max(dot(half_direction, up), 0.0), 4.0);
   vec3 spec = ks * light_color * spec_strength * diff_ao;
 
-  return spec;
+  vec3 sun_dir = normalize(light_position);
+  vec3 diff = max(dot(sun_dir, up), 0.0) * kd * light_color * diff_ao;
+  // vec3 diff = vec3(0.0);
+
+  return spec + diff;
 }
 
 void main() {
   float y = pow(v_y, 0.25);
 
-  vec3 tmp_color = color;
-  tmp_color.g *= y;
+  vec3 tmp_color = texture2D(terrain_color, v_color_uv).rgb;
 
   vec3 sun_contrib = directional_light(sun_position, sun_color, pow(v_y, 1.5));
   tmp_color += sun_contrib * 0.5;
 
-#if USE_FOG
-#if USE_HEIGHT_FACTOR_VISIBILITY
-  tmp_color = mix(vec3(1.0), tmp_color, v_height_factor);
-#else
-  float dist_to_camera = length(camera_position - v_position);
-  float visibility = clamp(exp(-pow(dist_to_camera * 0.008, 1.5)), 0.0, 1.0);
-  tmp_color = mix(vec3(1.0), tmp_color, visibility);
-#endif
-#endif
-
   gl_FragColor = vec4(tmp_color, 1.0);
-  // gl_FragColor = vec4(vec3(v_height_factor), 1.0);
 }
 `;

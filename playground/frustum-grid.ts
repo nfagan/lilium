@@ -105,6 +105,7 @@ export class FrustumGrid {
 
   alphaRiseFactor: number = 0.1;
   alphaDecayFactor: number = 0.01;
+  snapOnRotate: boolean = true;
 
   private readonly n0: vec2;
   private readonly n1: vec2;
@@ -300,8 +301,8 @@ export class FrustumGrid {
     this.lastTheta = theta;
 
     const cellSize = this.cellSize();
-    const alphaDecay = isSameRotation ? this.alphaDecayFactor : 1;
-    const alphaRise = isSameRotation ? this.alphaRiseFactor : 1;
+    const alphaDecay = (isSameRotation || !this.snapOnRotate) ? this.alphaDecayFactor : 1;
+    const alphaRise = (isSameRotation || !this.snapOnRotate) ? this.alphaRiseFactor : 1;
 
     const minX = this.minX();
     const minZ = this.minZ();

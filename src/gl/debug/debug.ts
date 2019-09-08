@@ -2,7 +2,7 @@ import { Result, NumberSampler, BuiltinRealArray } from '../../util';
 import { types, Program, math, Keyboard, Keys, Vao, ICamera, FollowCamera } from '..';
 import { mat4, vec3, glMatrix } from 'gl-matrix';
 
-export function segmentedQuadPositions(numSegments: number): Float32Array {
+export function segmentedQuadPositions(numSegments: number, is3d = true): Float32Array {
   const segmentSize = 1 / numSegments;
   const positions: Array<number> = [];
 
@@ -16,28 +16,46 @@ export function segmentedQuadPositions(numSegments: number): Float32Array {
     //  tri1.
     positions.push(x0);
     positions.push(y1);
-    positions.push(z);
+
+    if (is3d) {
+      positions.push(z);
+    }
 
     positions.push(x0);
     positions.push(y0);
-    positions.push(z);
+
+    if (is3d) {
+      positions.push(z);
+    }
     
     positions.push(x1);
     positions.push(y0);
-    positions.push(z);
+
+    if (is3d) {
+      positions.push(z);
+    }
 
     //  tri2.
     positions.push(x1);
     positions.push(y0);
-    positions.push(z);
+
+    if (is3d) {
+      positions.push(z);
+    }
 
     positions.push(x1);
     positions.push(y1);
-    positions.push(z);
+
+    if (is3d) {
+      positions.push(z);
+    }
 
     positions.push(x0);
     positions.push(y1);
-    positions.push(z);
+
+    if (is3d) {
+      positions.push(z);
+    }
   }
 
   return new Float32Array(positions);

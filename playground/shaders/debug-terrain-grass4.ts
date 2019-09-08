@@ -22,6 +22,7 @@ uniform float camera_theta;
 
 uniform vec3 blade_scale;
 uniform vec3 next_blade_scale;
+uniform vec2 densities;
 
 uniform int is_billboarded;
 
@@ -77,23 +78,31 @@ void main() {
 
   vec4 translation_info = texture2D(frustum_grid_map, a_frustum_grid_uv);
   float alpha = clamp(translation_info.a, 0.0, 1.0);
+  // float alpha = 1.0;
 
   vec2 world_translation = translation_info.xy * frustum_grid_cell_size + frustum_grid_cell_size * a_translation;
 
   float camera_dist = length(world_translation - camera_position.xz);
-  // float height_factor = clamp(exp(-pow(camera_dist * 0.008, 1.5)), 0.0, 1.0);
-  float height_factor = 1.0;
+  float height_factor = clamp(exp(-pow(camera_dist * 0.003, 2.0)), 0.0, 1.0);
+  // float height_factor = 1.0;
 
   float rotation = is_billboarded > 0 ? camera_theta : a_rotation;
 
   vec2 world_to_camera_offset = world_translation - (camera_position.xz + camera_front_xz * frustum_z_offset);
   float frac_frustum = clamp(dot(normalize(world_to_camera_offset), camera_front_xz) * length(world_to_camera_offset) / frustum_z_extent, 0.0, 1.0);
   vec3 use_scale = blade_scale;
-  // use_scale = mix(blade_scale, next_blade_scale, frac_frustum);
+  use_scale = mix(blade_scale, next_blade_scale, pow(smoothstep(0.0, 1.0, frac_frustum), 1.0));
+
+  //  Density
+  float density_criterion = (1.0 - densities.y / densities.x) * pow(frac_frustum, 2.0);
+  float density_mask = noise_amount > density_criterion ? 1.0 : 1.0 - density_criterion - noise_amount;
+  // float density_mask = 1.0;
+
+  // position.xz += 2.0 * pow(y, 0.5) * frac_frustum;
 
   position = make_scale_matrix(use_scale, rotation) * position;
   position.xz += world_translation;
-  position.y *= alpha * height_factor;
+  position.y *= alpha * height_factor * density_mask;
 
   position.xz += camera_right_xz * sin(t * noise_amount * 2.0) * y * 0.1;
   position.xz += camera_right_xz * cos(t * noise_amount * 4.0) * y3 * 0.05;
@@ -110,9 +119,9 @@ void main() {
   v_discard = translation_info.z > 0.5 ? 100.0 : -100.0;
   v_height_factor = frac_frustum;
 
-  float w_component = translation_info.z > 0.5 ? 1.0 : 0.0;
+  float w = translation_info.z > 0.5 ? 1.0 : 0.0;
 
-  gl_Position = projection * view * vec4(position, w_component);
+  gl_Position = projection * view * vec4(position, 1.0);
 }
 `;
 
@@ -162,12 +171,11 @@ void main() {
   tmp_color = mix(vec3(1.0), tmp_color, v_height_factor);
 #else
   float dist_to_camera = length(camera_position - v_position);
-  float visibility = clamp(exp(-pow(dist_to_camera * 0.008, 1.5)), 0.0, 1.0);
+  float visibility = clamp(exp(-pow(dist_to_camera * 0.001, 1.5)), 0.0, 1.0);
   tmp_color = mix(vec3(1.0), tmp_color, visibility);
 #endif
 #endif
 
   gl_FragColor = vec4(tmp_color, 1.0);
-  // gl_FragColor = vec4(vec3(v_height_factor), 1.0);
 }
 `;

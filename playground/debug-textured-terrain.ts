@@ -2,8 +2,9 @@ import * as wgl from '../src/gl';
 import * as game from '../src/game';
 import * as util from '../src/util';
 import { mat4, vec3 } from 'gl-matrix';
-import * as terrainSources from './shaders/debug-terrain';
-import * as grassSources from './shaders/debug-terrain-grass3';
+import * as terrainSources from './shaders/debug-textured-terrain';
+import * as grassSources from './shaders/debug-textured-terrain-grass';
+import * as billboardedGrassSources from './shaders/debug-textured-billboarded-grass';
 import { FrustumGrid } from './frustum-grid';
 
 function makeHeightMapTexture(gl: WebGLRenderingContext, heightMapImage: util.Image): wgl.Texture2D {
@@ -18,6 +19,14 @@ function makeHeightMapTexture(gl: WebGLRenderingContext, heightMapImage: util.Im
   return tex;
 }
 
+type TerrainInfo = {
+  heightMap: wgl.terrain.IHeightMap, 
+  heightMapTexture: wgl.Texture2D, 
+  groundColorTexture: wgl.Texture2D,
+  heightScale: number, 
+  terrainGridScale: number
+};
+
 type TerrainGrassDrawableOptions = {
   gridScale: number,
   bladeScale: Array<number>, 
@@ -27,18 +36,198 @@ type TerrainGrassDrawableOptions = {
   aspectRatio: number,
   cameraFieldOfView: number,
   grassDensity: number,
+  nextGrassDensity: number,
   riseFactor?: number,
   decayFactor?: number,
   isBillboarded: boolean,
-  numBladeSegments?: number
+  numBladeSegments?: number,
+  snapOnRotate?: boolean
 }
 
-type TerrainInfo = {
-  heightMap: wgl.terrain.IHeightMap, 
-  heightMapTexture: wgl.Texture2D, 
-  heightScale: number, 
-  terrainGridScale: number
-};
+class BillboardedTerrainGrassDrawable {
+  private renderContext: wgl.RenderContext;
+  private drawable: wgl.types.Drawable;
+  private program: wgl.Program;
+  private alphaTexture: wgl.Texture2D;
+
+  private terrainInfo: TerrainInfo;
+
+  private frustumGrid: FrustumGrid;
+  private frustumGridTexture: wgl.Texture2D;
+
+  private options: TerrainGrassDrawableOptions;
+  private cameraFrontXz = [0, 0, 0];
+
+  constructor(renderContext: wgl.RenderContext, options: TerrainGrassDrawableOptions, terrainInfo: TerrainInfo, alphaImage: util.Image) {
+    this.renderContext = renderContext;
+    this.terrainInfo = terrainInfo;
+    this.options = options;
+
+    this.makeFrustumGrid(options);
+    this.makeAlphaTexture(alphaImage);
+    this.makeDrawable();
+    this.makeFrustumGridTexture();
+  }
+
+  private makeFrustumGrid(options: TerrainGrassDrawableOptions): void {
+    const gridScale = options.gridScale;
+    const gridOffsetZ = options.gridOffsetZ;
+    const tanFov = Math.tan(options.cameraFieldOfView/2);
+    const nearScale = tanFov * options.aspectRatio * (gridOffsetZ + options.aspectRatio) * 2;
+    const farScale = tanFov * options.aspectRatio * (gridOffsetZ + gridScale + options.aspectRatio) * 2;
+
+    this.frustumGrid = new FrustumGrid(nearScale, farScale, gridScale, options.frustumGridDim, gridOffsetZ);
+    
+    if (options.snapOnRotate !== undefined) {
+      this.frustumGrid.snapOnRotate = options.snapOnRotate;
+    }
+    if (options.decayFactor !== undefined) {
+      this.frustumGrid.alphaDecayFactor = options.decayFactor;
+    }
+    if (options.riseFactor !== undefined) {
+      this.frustumGrid.alphaRiseFactor = options.riseFactor;
+    }
+  }
+
+  private makeFrustumGridTexture(): void {
+    const gl = this.renderContext.gl;
+    const tex = new wgl.Texture2D(gl);
+
+    tex.minFilter = gl.NEAREST;
+    tex.magFilter = gl.NEAREST;
+    tex.wrapS = gl.CLAMP_TO_EDGE;
+    tex.wrapT = gl.CLAMP_TO_EDGE;
+    tex.level = 0;
+    tex.internalFormat = gl.RGBA;
+    tex.width = this.frustumGrid.gridDim;
+    tex.height = this.frustumGrid.gridDim;
+    tex.border = 0;
+    tex.srcFormat = gl.RGBA;
+    tex.srcType = gl.FLOAT;
+
+    tex.bindAndConfigure();
+    tex.fillImage(this.frustumGrid.cellIndices);
+
+    this.frustumGridTexture = tex;
+  }
+
+  private makeAlphaTexture(alphaImage: util.Image): void {
+    const tex = wgl.Texture2D.linearRepeatRGBA(this.renderContext.gl, alphaImage.width);
+
+    tex.wrapS = this.renderContext.gl.CLAMP_TO_EDGE;
+    tex.wrapT = this.renderContext.gl.CLAMP_TO_EDGE;
+
+    tex.bindAndConfigure();
+    tex.fillImage(alphaImage.data as Uint8Array);
+
+    this.alphaTexture = tex;
+  }
+
+  private makeInstanceData(numInstances: number): Float32Array {
+    const vertSize = 5;
+    const instanceData = new Float32Array(vertSize * numInstances);
+
+    for (let i = 0; i < numInstances; i++) {
+      instanceData[i*vertSize] =  Math.random();
+      instanceData[i*vertSize+1] = Math.random();
+
+      instanceData[i*vertSize+2] = Math.random();
+      instanceData[i*vertSize+3] = Math.random();
+
+      instanceData[i*vertSize+4] = Math.random() * Math.PI;
+    }
+
+    return instanceData;
+  }
+
+  private makeDrawable(): void {
+    const gl = this.renderContext.gl;
+    const instanceDim = 200;
+    const numInstances = instanceDim * instanceDim;
+
+    const quadData = wgl.geometry.quadPositions();
+    const quadIndices = wgl.geometry.quadIndices();
+    const instanceData = this.makeInstanceData(numInstances);
+
+    const vboDescriptors: Array<wgl.types.VboDescriptor> = [
+      {name: 'position', attributes: [wgl.types.makeAttribute('a_position', gl.FLOAT, 3, 0)], data: quadData},
+      {name: 'instanceData', attributes: [
+        wgl.types.makeAttribute('a_translation', gl.FLOAT, 2, 1),
+        wgl.types.makeAttribute('a_frustum_grid_uv', gl.FLOAT, 2, 1),
+        wgl.types.makeAttribute('a_rotation', gl.FLOAT, 1, 1),
+      ], data: instanceData}
+    ];
+
+    const eboDescriptor = wgl.types.makeAnonymousEboDescriptor(quadIndices);
+
+    const prog = wgl.Program.fromSources(gl, billboardedGrassSources.vertex, billboardedGrassSources.fragment);
+    const vao = wgl.Vao.fromDescriptors(gl, prog, vboDescriptors, eboDescriptor);
+    
+    const drawable = wgl.types.Drawable.indexedInstanced(this.renderContext, vao, quadIndices.length, numInstances);
+
+    this.program = prog;
+    this.drawable = drawable;
+  }
+
+  update(dt: number, camera: wgl.ICamera, playerPos: wgl.types.Real3): void {
+    const currFront = this.cameraFrontXz;
+    camera.getFrontXz(currFront);
+    const theta = Math.atan2(currFront[2], currFront[0]) + Math.PI/2;
+
+    const pos = camera.position;
+
+    this.frustumGrid.update(pos[0], pos[2], theta);
+    this.frustumGridTexture.bind();
+    this.frustumGridTexture.subImage(this.frustumGrid.cellIndices);
+  }
+
+  render(view: mat4, proj: mat4, camera: wgl.ICamera, sunPos: wgl.types.Real3, sunColor: wgl.types.Real3): void {
+    const rc = this.renderContext;
+    const gl = rc.gl;
+
+    rc.useProgram(this.program);
+    rc.bindVao(this.drawable.vao);
+
+    gl.disable(gl.CULL_FACE);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    this.alphaTexture.index = 5;
+    this.alphaTexture.activateAndBind();
+
+    this.frustumGridTexture.index = 6;
+    this.frustumGridTexture.activateAndBind();
+
+    wgl.debug.setViewProjection(this.program, view, proj);
+
+    const camTheta = Math.atan2(-this.cameraFrontXz[2], this.cameraFrontXz[0]) + Math.PI/2;
+    const camTheta2 = Math.atan2(this.cameraFrontXz[2], this.cameraFrontXz[0]) + Math.PI/2;
+
+    this.program.set1f('camera_theta', camTheta);
+    this.program.setTexture('height_map', this.terrainInfo.heightMapTexture.index);
+    this.program.set1f('height_scale', this.terrainInfo.heightScale);
+    this.program.set3f('model_scale', 1, 0.75, 1);
+    this.program.set1f('terrain_grid_scale', this.terrainInfo.terrainGridScale);
+
+    this.program.setTexture('frustum_grid_map', this.frustumGridTexture.index);
+    this.program.set1f('frustum_grid_cell_size', this.frustumGrid.cellSize());
+
+    this.program.setTexture('alpha_texture', this.alphaTexture.index);
+    this.program.setTexture('terrain_color', this.terrainInfo.groundColorTexture.index);
+    
+    this.program.set1f('t', performance.now() / 1e3);
+    this.program.set2f('camera_right_xz', Math.cos(camTheta2), Math.sin(camTheta2));
+
+    this.program.setVec3('camera_position', camera.position);
+    this.program.setVec3('sun_position', sunPos);
+    this.program.setVec3('sun_color', sunColor);
+
+    this.drawable.draw();
+
+    gl.enable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+  }
+}
 
 class TerrainGrassDrawable {
   private renderContext: wgl.RenderContext;
@@ -60,6 +249,7 @@ class TerrainGrassDrawable {
 
   private program: wgl.Program;
   private drawable: wgl.types.Drawable;
+  private bladeTexture: wgl.Texture2D;
 
   private terrainInfo: TerrainInfo;
 
@@ -68,7 +258,7 @@ class TerrainGrassDrawable {
 
   private options: TerrainGrassDrawableOptions;
 
-  constructor(renderContext: wgl.RenderContext, options: TerrainGrassDrawableOptions, terrainInfo: TerrainInfo) {
+  constructor(renderContext: wgl.RenderContext, options: TerrainGrassDrawableOptions, terrainInfo: TerrainInfo, bladeImage: util.Image) {
     this.gridOffsetZ = options.gridOffsetZ;
     this.gridScale = options.gridScale;
     this.bladeScale = options.bladeScale.slice();
@@ -93,6 +283,17 @@ class TerrainGrassDrawable {
     this.createInstanceData();
     this.initializeInstanceData();
     this.makeDrawable();
+    this.makeBladeTexture(bladeImage);
+  }
+
+  private makeBladeTexture(bladeImage: util.Image): void {
+    const gl = this.renderContext.gl;
+    const tex = wgl.Texture2D.linearRepeatRGBA(gl, bladeImage.width);
+
+    tex.bindAndConfigure();
+    tex.fillImage(bladeImage.data);
+    
+    this.bladeTexture = tex;
   }
 
   private makeFrustumGrid(options: TerrainGrassDrawableOptions): void {
@@ -204,7 +405,13 @@ class TerrainGrassDrawable {
 
     this.terrainInfo.heightMapTexture.activateAndBind();
 
-    this.program.setVec3('color', this.color);
+    this.terrainInfo.groundColorTexture.index = 3;
+    this.terrainInfo.groundColorTexture.activateAndBind();
+
+    this.bladeTexture.index = 4;
+    this.bladeTexture.activateAndBind();
+
+    // this.program.setVec3('color', this.color);
     this.program.setVec3('blade_scale', this.bladeScale);
     this.program.setVec3('next_blade_scale', this.nextBladeScale);
 
@@ -216,6 +423,10 @@ class TerrainGrassDrawable {
     this.program.setTexture('height_map', this.terrainInfo.heightMapTexture.index);
     this.program.set1f('height_scale', this.terrainInfo.heightScale);
     this.program.set1f('terrain_grid_scale', this.terrainInfo.terrainGridScale);
+    this.program.set2f('densities', this.options.grassDensity, this.options.nextGrassDensity);
+
+    this.program.setTexture('terrain_color', this.terrainInfo.groundColorTexture.index);
+    // this.program.setTexture('blade_texture', this.bladeTexture.index);
 
     const camTheta = Math.atan2(-this.cameraFrontXz[2], this.cameraFrontXz[0]) + Math.PI/2;
     const camTheta2 = Math.atan2(this.cameraFrontXz[2], this.cameraFrontXz[0]) + Math.PI/2;
@@ -260,19 +471,21 @@ class TerrainDrawable {
 
   private skyDomeTexture: wgl.Texture2D;
   private skyDomeRadius: number;
+  private groundTexture: wgl.Texture2D;
 
   readonly gridScale: number;
   readonly heightScale: number;
   private color = [0.5, 1, 0.5];
 
   constructor(renderContext: wgl.RenderContext, heightMap: wgl.terrain.IHeightMap, 
-    heightMapTexture: wgl.Texture2D, skyDomeTexture: wgl.Texture2D, skyDomeRadius: number, gridScale: number, heightScale: number) {
+    heightMapTexture: wgl.Texture2D, skyDomeTexture: wgl.Texture2D, skyDomeRadius: number, gridScale: number, heightScale: number, groundTexture: wgl.Texture2D) {
 
     this.renderContext = renderContext;
     this.heightMap = heightMap;
     this.heightMapTexture = heightMapTexture;
     this.gridScale = gridScale;
     this.heightScale = heightScale;
+    this.groundTexture = groundTexture;
 
     this.skyDomeTexture = skyDomeTexture;
     this.skyDomeRadius = skyDomeRadius;
@@ -316,9 +529,12 @@ class TerrainDrawable {
   private bindTextures(): void {
     this.renderContext.pushActiveTexture2DAndBind(this.heightMapTexture);
     this.renderContext.pushActiveTexture2DAndBind(this.skyDomeTexture);
+    this.renderContext.pushActiveTexture2DAndBind(this.groundTexture);
   }
 
   private unbindTextures(): void {
+    this.renderContext.popTexture2D();
+    this.renderContext.popTexture2D();
     this.renderContext.popTexture2D();
   }
 
@@ -334,10 +550,13 @@ class TerrainDrawable {
     this.renderContext.useProgram(this.program);
     wgl.debug.setViewProjection(this.program, view, proj);
 
+    const camFront = vec3.create();
+    camera.getFrontXz(camFront);
+
     this.bindTextures();
 
     this.program.setMat4('model', this.model.transform.matrix);
-    this.program.setVec3('color', this.color);
+    // this.program.setVec3('color', this.color);
     this.program.setVec3('sun_position', sunPosition);
     this.program.setVec3('sun_color', sunColor);
     this.program.setVec3('camera_position', camera.position);
@@ -346,8 +565,12 @@ class TerrainDrawable {
 
     this.program.setTexture('height_map', this.heightMapTexture.index);
     this.program.set1f('height_scale', this.heightScale);
-    this.program.set1f('far_grass_end', 100);
     // this.program.setTexture('sky_dome_texture', this.skyDomeTexture.index);
+
+    this.program.setTexture('ground_texture', this.groundTexture.index);
+
+    this.program.set1f('frustum_z_extent', 30);
+    this.program.set2f('camera_front_xz', -camFront[0], -camFront[2]);
 
     this.disableCullFace();
 
@@ -371,27 +594,27 @@ class Game {
   private frameTimer: util.Stopwatch;
   private cameraTarget: wgl.Model;
   private imageQuality: game.ImageQuality = game.ImageQuality.High;
-  private movementSpeed = 0.25;
+  private movementSpeed = 0.38;
   private touchControlElements: wgl.debug.DebugTouchControls;
 
   private playerPosition = [0, 0, 0];
   private playerAabb: wgl.math.Aabb;
 
-  private sunPosition = [10, 20, 10];
+  private sunPosition = [50, 20, 50];
   private sunColor = [1, 1, 1];
 
   private terrainDrawable: TerrainDrawable;
   private terrainHeightMap: wgl.terrain.IHeightMap;
   private terrainHeightMapTexture: wgl.Texture2D;
 
-  private readonly terrainHeightScale = 20;
-  private readonly terrainGridScale = 200;
+  private readonly terrainHeightScale = 25;
+  private readonly terrainGridScale = 300;
+
+  private isGrassPaused: boolean = false;
 
   private medLodGrass: TerrainGrassDrawable;
   private highLodGrass: TerrainGrassDrawable;
-  private highestLodGrass: TerrainGrassDrawable;
-
-  private isGrassPaused: boolean = false;
+  private billboardedGrass: BillboardedTerrainGrassDrawable;
 
   private skyDome: game.SkyDomeDrawable;
   private readonly skyDomeScale = 400;
@@ -474,12 +697,28 @@ class Game {
     return tex;
   }
 
+  private makeGroundTexture(groundImage: util.Image): wgl.Texture2D {
+    const gl = this.renderContext.gl;
+    const tex = wgl.Texture2D.linearRepeatRGBA(gl, groundImage.width);
+    tex.wrapS = gl.CLAMP_TO_EDGE;
+    tex.wrapT = gl.CLAMP_TO_EDGE;
+
+    tex.bindAndConfigure();
+    tex.fillImage(groundImage.data as Uint8Array);
+
+    return tex;
+  }
+
   private async makeTerrain(): Promise<void> {
-    const image = await util.loadImageObject('/texture/sphere-heightmap2.png');
-    const heightMap = new wgl.terrain.ImageHeightMap(image);
+    const heightMapImage = await util.loadImageObject('/texture/sphere-heightmap2.png');
+    const groundImage = await util.loadImageObject('/texture/grass:terrain-grass3.png');
+    const bladeImage = await util.loadImageObject('/texture/grass:blade-texture1.png');
+    const alphaTextureImage = await util.loadImageObject('/texture/grass:grass-quad2.png');
+
+    const heightMap = new wgl.terrain.ImageHeightMap(heightMapImage);
     heightMap.setInterpolationExtent(0.01);
     this.terrainHeightMap = heightMap;
-    this.terrainHeightMapTexture = makeHeightMapTexture(this.renderContext.gl, image);
+    this.terrainHeightMapTexture = makeHeightMapTexture(this.renderContext.gl, heightMapImage);
 
     const noiseImage = await util.loadImageObject('/texture/blue_noise_mask_256_256.png');
     const noiseTexture = this.makeNoiseTexture(noiseImage);
@@ -489,68 +728,79 @@ class Game {
     const rc = this.renderContext;
     const fov = this.camera.getFieldOfView();
 
-    const medLodOptions: TerrainGrassDrawableOptions = {
-      gridOffsetZ: 100,
-      gridScale: 50,
-      bladeScale: [15, 3, 1],
-      nextBladeScale: [15, 3, 1],
-      frustumGridDim: 64,
-      aspectRatio: this.aspectRatio(),
-      cameraFieldOfView: fov,
-      grassDensity: 0.5,
-      riseFactor: 0.01,
-      decayFactor: 0.01,
-      isBillboarded: true
-    }
-
-    const highLodOptions: TerrainGrassDrawableOptions = {
-      gridOffsetZ: 50,
-      gridScale: 50,
-      bladeScale: [1, 3, 1],
-      nextBladeScale: [1, 3, 1],
-      frustumGridDim: 64,
-      aspectRatio: this.aspectRatio(),
-      cameraFieldOfView: fov,
-      grassDensity: 5,
-      isBillboarded: false,
-      numBladeSegments: 1,
-      riseFactor: 0.05
-    }
-
-    const highestLodOptions: TerrainGrassDrawableOptions = {
-      gridOffsetZ: 0,
-      gridScale: 50,
-      bladeScale: [0.12, 3, 1],
-      nextBladeScale: [1, 3, 1],
-      frustumGridDim: 32,
-      aspectRatio: this.aspectRatio(),
-      cameraFieldOfView: fov,
-      grassDensity: 8,
-      isBillboarded: false,
-      numBladeSegments: 3,
-      riseFactor: 0.05
-    }
+    const groundColorTexture = this.makeGroundTexture(groundImage);
 
     const terrainInfo: TerrainInfo = {
       heightMap,
       heightMapTexture: this.terrainHeightMapTexture,
       heightScale: this.terrainHeightScale,
-      terrainGridScale: this.terrainGridScale
+      terrainGridScale: this.terrainGridScale,
+      groundColorTexture: groundColorTexture
     };
 
-    this.medLodGrass = new TerrainGrassDrawable(rc, medLodOptions, terrainInfo);
-    this.highLodGrass = new TerrainGrassDrawable(rc, highLodOptions, terrainInfo);
-    this.highestLodGrass = new TerrainGrassDrawable(rc, highestLodOptions, terrainInfo);
+    const medLodOptions: TerrainGrassDrawableOptions = {
+      gridOffsetZ: 50,
+      gridScale: 100,
+      bladeScale: [1, 1.5, 1],
+      nextBladeScale: [1, 2.0, 1],
+      frustumGridDim: 64,
+      aspectRatio: this.aspectRatio(),
+      cameraFieldOfView: fov,
+      grassDensity: 1,
+      nextGrassDensity: 1,
+      riseFactor: 0.025,
+      decayFactor: 0.005,
+      isBillboarded: true,
+      numBladeSegments: 2
+    };
 
-    this.terrainDrawable = new TerrainDrawable(rc, heightMap, this.terrainHeightMapTexture, this.skyDome.modelColorTexture, this.skyDomeScale, gridScale, heightScale);
+    const highLodOptions: TerrainGrassDrawableOptions = {
+      gridOffsetZ: 0,
+      gridScale: 75,
+      bladeScale: [0.1, 1.5, 1],
+      nextBladeScale: [0.1, 1.5, 1],
+      frustumGridDim: 32,
+      aspectRatio: this.aspectRatio(),
+      cameraFieldOfView: fov,
+      grassDensity: 4,
+      nextGrassDensity: 0.1,
+      riseFactor: 0.05,
+      decayFactor: 0.005,
+      isBillboarded: false,
+      numBladeSegments: 5
+    }
+
+    const billboardOptions: TerrainGrassDrawableOptions = {
+      gridOffsetZ: 10,
+      gridScale: 200,
+      bladeScale: [0.1, 1.5, 1],
+      nextBladeScale: [0.2, 1.5, 1],
+      frustumGridDim: 32,
+      aspectRatio: this.aspectRatio(),
+      cameraFieldOfView: fov,
+      grassDensity: 4,
+      nextGrassDensity: 1,
+      riseFactor: 0.025,
+      decayFactor: 0.005,
+      isBillboarded: false,
+      snapOnRotate: true
+    }
+
+    this.medLodGrass = new TerrainGrassDrawable(rc, medLodOptions, terrainInfo, bladeImage);
+    this.highLodGrass = new TerrainGrassDrawable(rc, highLodOptions, terrainInfo, bladeImage);
+    this.terrainDrawable = new TerrainDrawable(rc, heightMap, this.terrainHeightMapTexture, this.skyDome.modelColorTexture, this.skyDomeScale, gridScale, heightScale, groundColorTexture);
+
+    this.billboardedGrass = new BillboardedTerrainGrassDrawable(rc, billboardOptions, terrainInfo, alphaTextureImage);
   }
 
   private aspectRatio(): number {
-    return this.renderContext.gl.canvas.clientWidth / this.renderContext.gl.canvas.clientHeight;
+    const canvas = this.renderContext.gl.canvas as HTMLCanvasElement;
+    return canvas.clientWidth / canvas.clientHeight;
   }
 
   private makeCamera(): wgl.FollowCamera {
     const camera = wgl.debug.makeFollowCamera(this.renderContext.gl);
+    camera.followDistance = 13;
     camera.rotate(0, -0.2);
     return camera;
   }
@@ -560,7 +810,7 @@ class Game {
     const player = new game.Player(playerDims);
     this.playerAabb = player.aabb;
     this.playerAabb.moveToY(0);
-    this.playerAabb.moveTo3(165, 0, 165);
+    // this.playerAabb.moveTo3(165, 0, 165);
   }
 
   private setupDocument(keyboard: wgl.Keyboard): void {
@@ -692,14 +942,17 @@ class Game {
   }
 
   private render(view: mat4, proj: mat4): void {
-    wgl.debug.beginRender(this.renderContext.gl, this.camera, game.getDpr(this.imageQuality));
+    const gl = this.renderContext.gl;
+
+    wgl.debug.beginRender(gl, this.camera, game.getDpr(this.imageQuality));
     this.renderer.render(this.scene, this.camera, view, proj);
 
     this.terrainDrawable.render(view, proj, this.camera, this.playerPosition, this.sunPosition, this.sunColor);
 
-    this.highestLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
     this.highLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
-    this.medLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
+    // this.medLodGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
+
+    this.billboardedGrass.render(view, proj, this.camera, this.sunPosition, this.sunColor);
   }
 
   async initialize(): Promise<void> {
@@ -709,9 +962,9 @@ class Game {
   }
 
   private updateGrass(dt: number): void {
-    this.medLodGrass.update(dt, this.camera, this.playerPosition);
+    this.billboardedGrass.update(dt, this.camera, this.playerPosition);
+    // this.medLodGrass.update(dt, this.camera, this.playerPosition);
     this.highLodGrass.update(dt, this.camera, this.playerPosition);
-    this.highestLodGrass.update(dt, this.camera, this.playerPosition);
   }
 
   update(): void {
